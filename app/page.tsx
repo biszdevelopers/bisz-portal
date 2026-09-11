@@ -1,9 +1,5 @@
-import Image from "next/image";
+import { DashboardShell } from "@/components/dashboard-shell"
 
 export default function Home() {
-  return (
-    <div>
-      Hellobun
-    </div>
-  );
+  return <DashboardShell />
 }
