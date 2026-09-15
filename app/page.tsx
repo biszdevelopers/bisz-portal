@@ -1,5 +1,3 @@
-import { DashboardShell } from "@/components/dashboard-shell"
-
-export default function Home() {
-  return <DashboardShell />
+export default function OverviewPage() {
+  return <h1 className="text-3xl font-semibold tracking-tight">Hello, Overview</h1>
 }
