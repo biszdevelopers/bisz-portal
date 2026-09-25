@@ -13,7 +13,7 @@ const { capabilities, pending } = usePortalAccess()
     <el-card v-else shadow="never">
       <template #header>Incident list</template>
       <el-empty :image-size="84" description="Incident details will appear here.">
-        <el-icon :size="36" color="#c0c4cc"><WarningFilled /></el-icon>
+        <el-icon :size="36" color="var(--el-text-color-placeholder)"><WarningFilled /></el-icon>
       </el-empty>
     </el-card>
   </section>

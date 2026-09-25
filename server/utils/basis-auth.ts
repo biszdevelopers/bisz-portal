@@ -1,4 +1,4 @@
-export const BASIS_PORTAL_SCOPE = "bisz-portal.access"
+export const BASIS_PORTAL_SCOPE = "noesis.access"
 
 export function requiredEnvironment(name: string) {
   const value = process.env[name]

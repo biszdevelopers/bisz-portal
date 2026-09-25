@@ -16,9 +16,9 @@
   "dependencies": {
     "@basis/schema": "link:@basis/schema",
     "@element-plus/icons-vue": "^2.3.2",
-    "@element-plus/nuxt": "^1.1.0",
+    "@element-plus/nuxt": "^1.1.5",
     "drizzle-orm": "0.45.2",
-    "element-plus": "^2.13.2",
+    "element-plus": "^2.14.6",
     "jose": "^6.2.7",
     "markdown-it": "^14.1.0",
     "nuxt": "4.5.2",
@@ -30,6 +30,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.2",
     "@types/markdown-it": "^14.1.2",
     "@types/pg": "^8.15.6",
     "drizzle-kit": "^0.31.10",

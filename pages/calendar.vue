@@ -13,7 +13,7 @@ const { capabilities, pending } = usePortalAccess()
     <el-card v-else shadow="never">
       <template #header>Workspace calendar</template>
       <el-empty :image-size="84" description="Calendar activity will appear here.">
-        <el-icon :size="36" color="#c0c4cc"><Calendar /></el-icon>
+        <el-icon :size="36" color="var(--el-text-color-placeholder)"><Calendar /></el-icon>
       </el-empty>
     </el-card>
   </section>

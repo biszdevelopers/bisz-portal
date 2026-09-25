@@ -12,7 +12,7 @@ function recover() {
   <NuxtLayout>
     <section class="error-page">
       <el-card class="error-card" shadow="never">
-        <el-icon :size="44" color="#f56c6c"><WarningFilled /></el-icon>
+        <el-icon :size="44" color="var(--el-color-danger)"><WarningFilled /></el-icon>
         <h1>Something went wrong</h1>
         <p>The portal could not load this page. Please try again.</p>
         <el-button type="primary" @click="recover">Back to overview</el-button>
@@ -40,7 +40,7 @@ h1 {
 
 p {
   margin: 0 0 24px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 14px;
 }
 </style>

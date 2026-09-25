@@ -2,16 +2,39 @@
 import {
   Bell,
   Calendar,
+  Check,
   DocumentChecked,
   FolderOpened,
   Grid,
+  Monitor,
+  Moon,
   Right,
+  Sunny,
+  SwitchButton,
   WarningFilled,
 } from "@element-plus/icons-vue"
+import type { ThemePreference } from "~/composables/useTheme"
 
 const route = useRoute()
-const { loggedIn, user } = useUserSession()
+const { clear: clearUserSession, loggedIn, user } = useUserSession()
 const { capabilities } = usePortalAccess()
+const { preference, resolvedTheme, setTheme } = useTheme()
+
+const systemThemeOption = { value: "system", label: "System", icon: Monitor } as const
+const themeOptions = [
+  systemThemeOption,
+  { value: "light", label: "Light", icon: Sunny },
+  { value: "dark", label: "Dark", icon: Moon },
+] satisfies Array<{ value: ThemePreference, label: string, icon: typeof Monitor }>
+
+const activeTheme = computed(() => themeOptions.find((option) => option.value === preference.value) ?? systemThemeOption)
+const activeThemeIcon = computed(() => preference.value === "system"
+  ? (resolvedTheme.value === "dark" ? Moon : Sunny)
+  : activeTheme.value.icon)
+
+function handleThemeCommand(command: ThemePreference) {
+  setTheme(command)
+}
 
 const navigation = computed(() => [
   { label: "Overview", path: "/", icon: Grid },
@@ -31,8 +54,14 @@ function navigate(item: (typeof navigation.value)[number]) {
 }
 
 const accountName = computed(() => user.value?.name || (loggedIn.value ? "Basis user" : "Not signed in"))
-const accountDetail = computed(() => loggedIn.value ? "Signed in" : "Guest session")
-const accountImage = computed(() => user.value?.image || undefined)
+const accountImage = computed(() => user.value?.image?.trim() || undefined)
+const avatarFailed = ref(false)
+const loggingOut = ref(false)
+
+watch(accountImage, () => {
+  avatarFailed.value = false
+})
+
 const accountInitials = computed(() => {
   const source = user.value?.name || (loggedIn.value ? "Basis user" : "Guest")
   const words = source.trim().split(/\s+/).filter(Boolean)
@@ -42,6 +71,19 @@ const accountInitials = computed(() => {
 
 async function signInWithDevConnect() {
   await navigateTo("/api/auth/callback/basis-auth", { external: true })
+}
+
+async function logout() {
+  if (loggingOut.value) return
+
+  loggingOut.value = true
+  try {
+    await clearUserSession()
+    await navigateTo("/")
+    await refreshNuxtData()
+  } finally {
+    loggingOut.value = false
+  }
 }
 </script>
 
@@ -65,13 +107,32 @@ async function signInWithDevConnect() {
       </el-menu>
 
       <div class="portal-account">
-        <el-avatar :size="32" :src="accountImage">{{ accountInitials }}</el-avatar>
-        <span>
-          <strong>{{ accountName }}</strong>
-          <small>{{ accountDetail }}</small>
-        </span>
+        <template v-if="loggedIn">
+          <el-avatar
+            :size="34"
+            :src="avatarFailed ? undefined : accountImage"
+            fit="cover"
+            @error="avatarFailed = true"
+          >
+            {{ accountInitials }}
+          </el-avatar>
+          <div class="portal-account__identity">
+            <strong>{{ accountName }}</strong>
+          </div>
+          <el-tooltip content="Log out" placement="top">
+            <el-button
+              class="account-logout"
+              text
+              circle
+              :icon="SwitchButton"
+              :loading="loggingOut"
+              aria-label="Log out"
+              @click="logout"
+            />
+          </el-tooltip>
+        </template>
         <el-button
-          v-if="!loggedIn"
+          v-else
           class="account-login"
           type="primary"
           size="small"
@@ -91,9 +152,30 @@ async function signInWithDevConnect() {
           <el-breadcrumb-item>Workspace</el-breadcrumb-item>
           <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
         </el-breadcrumb>
-        <el-badge is-dot class="notification-badge">
-          <el-button :icon="Bell" text circle aria-label="Notifications" />
-        </el-badge>
+        <div class="portal-actions">
+          <el-dropdown trigger="click" @command="handleThemeCommand">
+            <el-button class="theme-switcher" text :aria-label="`Theme: ${activeTheme.label}`">
+              <el-icon><component :is="activeThemeIcon" /></el-icon>
+              <span class="theme-switcher__label">{{ activeTheme.label }}</span>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-for="option in themeOptions"
+                  :key="option.value"
+                  :command="option.value"
+                >
+                  <el-icon><component :is="option.icon" /></el-icon>
+                  <span>{{ option.label }}</span>
+                  <el-icon v-if="preference === option.value" class="theme-option__check"><Check /></el-icon>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-badge is-dot class="notification-badge">
+            <el-button :icon="Bell" text circle aria-label="Notifications" />
+          </el-badge>
+        </div>
       </el-header>
 
       <el-main class="portal-main">
@@ -106,7 +188,7 @@ async function signInWithDevConnect() {
 <style scoped>
 .portal-shell {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
 }
 
 .portal-shell > .el-container {
@@ -116,8 +198,8 @@ async function signInWithDevConnect() {
 .portal-aside {
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-right: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-right: 1px solid var(--el-border-color-light);
 }
 
 .portal-brand {
@@ -126,19 +208,19 @@ async function signInWithDevConnect() {
   gap: 10px;
   height: 60px;
   padding: 0 20px;
-  color: #303133;
+  color: var(--el-text-color-primary);
   font-size: 15px;
   font-weight: 600;
   text-decoration: none;
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid var(--el-border-color-light);
 }
 
 .portal-brand__mark {
   display: grid;
   width: 30px;
   height: 30px;
-  color: #fff;
-  background: #409eff;
+  color: var(--el-color-white);
+  background: var(--el-color-primary);
   border-radius: 4px;
   place-items: center;
 }
@@ -158,7 +240,7 @@ async function signInWithDevConnect() {
 }
 
 .portal-menu :deep(.el-menu-item.is-active) {
-  background: #ecf5ff;
+  background: var(--el-color-primary-light-9);
 }
 
 .portal-account {
@@ -166,22 +248,17 @@ async function signInWithDevConnect() {
   align-items: center;
   gap: 10px;
   padding: 14px 20px;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid var(--el-border-color-light);
 }
 
 .portal-account :deep(.el-avatar) {
-  color: #409eff;
+  color: var(--el-color-primary);
   font-size: 12px;
   font-weight: 600;
-  background: #ecf5ff;
+  background: var(--el-color-primary-light-9);
 }
 
-.portal-account strong,
-.portal-account small {
-  display: block;
-}
-
-.portal-account > span {
+.portal-account__identity {
   min-width: 0;
   flex: 1;
 }
@@ -197,16 +274,14 @@ async function signInWithDevConnect() {
   padding: 5px 8px;
 }
 
-.portal-account strong {
-  color: #303133;
-  font-size: 12px;
-  font-weight: 500;
+.account-logout {
+  flex: none;
 }
 
-.portal-account small {
-  margin-top: 2px;
-  color: #909399;
-  font-size: 11px;
+.portal-account strong {
+  color: var(--el-text-color-primary);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .portal-header {
@@ -215,8 +290,27 @@ async function signInWithDevConnect() {
   justify-content: space-between;
   height: 60px;
   padding: 0 24px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.portal-actions,
+.theme-switcher {
+  display: flex;
+  align-items: center;
+}
+
+.portal-actions {
+  gap: 8px;
+}
+
+.theme-switcher {
+  gap: 6px;
+}
+
+.theme-option__check {
+  margin-left: auto;
+  color: var(--el-color-primary);
 }
 
 .notification-badge :deep(.el-badge__content.is-fixed) {
@@ -242,7 +336,7 @@ async function signInWithDevConnect() {
 
   .portal-brand > span:last-child,
   .portal-menu :deep(.menu-label),
-  .portal-account > span {
+  .portal-account__identity {
     display: none;
   }
 
@@ -269,6 +363,10 @@ async function signInWithDevConnect() {
 
   .portal-main {
     padding: 20px 16px;
+  }
+
+  .theme-switcher__label {
+    display: none;
   }
 }
 </style>
