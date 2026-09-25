@@ -116,7 +116,9 @@ export default defineEventHandler(async (event) => {
       user: {
         email: typeof profile.email === "string" ? profile.email : null,
         id: profile.sub,
-        image: typeof profile.picture === "string" ? profile.picture : null,
+        image: typeof profile.picture === "string"
+          ? new URL(profile.picture, `${basisAuthIssuer()}/`).toString()
+          : null,
         name: typeof profile.name === "string" ? profile.name : null,
       },
     })

@@ -18,4 +18,7 @@ export default defineNuxtConfig({
   typescript: {
     strict: true,
   },
+  nitro: {
+    errorHandler: "~/server/error.ts",
+  }
 })

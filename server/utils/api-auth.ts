@@ -8,12 +8,11 @@ import {
   basisPortalAudience,
 } from "~/server/utils/basis-auth"
 
-type AuthenticatedRequest = {
+export type AuthenticatedRequest = {
   claims: AccessTokenClaims
   user: {
     id: string
     name: string | null
-    email: string | null
     image: string | null
   }
 }
@@ -56,7 +55,6 @@ export async function authenticateRequest(event: H3Event): Promise<Authenticated
       user: {
         id: claims.sub,
         name: typeof session.user?.name === "string" ? session.user.name : null,
-        email: typeof session.user?.email === "string" ? session.user.email : null,
         image: typeof session.user?.image === "string" ? session.user.image : null,
       },
     }

@@ -3,26 +3,32 @@ import {
   Bell,
   Calendar,
   DocumentChecked,
+  FolderOpened,
   Grid,
   Right,
-  UserFilled,
   WarningFilled,
 } from "@element-plus/icons-vue"
 
 const route = useRoute()
 const { loggedIn, user } = useUserSession()
+const { capabilities } = usePortalAccess()
 
-const navigation = [
+const navigation = computed(() => [
   { label: "Overview", path: "/", icon: Grid },
-  { label: "Tasks", path: "/tasks", icon: DocumentChecked },
-  { label: "Incidents", path: "/incidents", icon: WarningFilled },
-  { label: "Calendar", path: "/calendar", icon: Calendar },
-  { label: "Groups", path: "/groups", icon: UserFilled },
-]
+  { label: "Projects", path: "/projects", icon: FolderOpened, enabled: capabilities.value.projectsRead, permission: "BiszPortal.Projects.read" },
+  { label: "Tasks", path: "/tasks", icon: DocumentChecked, enabled: capabilities.value.tasksRead, permission: "BiszPortal.Tasks.read" },
+  { label: "Incidents", path: "/incidents", icon: WarningFilled, enabled: capabilities.value.incidentsRead, permission: "BiszPortal.Incidents.read" },
+  { label: "Calendar", path: "/calendar", icon: Calendar, enabled: capabilities.value.calendarRead, permission: "BiszPortal.Calendar.read" },
+])
 
 const pageTitle = computed(
-  () => navigation.find((item) => item.path === route.path)?.label ?? "Portal",
+  () => navigation.value.find((item) => item.path === route.path)?.label ?? "Portal",
 )
+
+function navigate(item: (typeof navigation.value)[number]) {
+  if (item.enabled === false) return
+  navigateTo(item.path)
+}
 
 const accountName = computed(() => user.value?.name || (loggedIn.value ? "Basis user" : "Not signed in"))
 const accountDetail = computed(() => loggedIn.value ? "Signed in" : "Guest session")
@@ -47,14 +53,15 @@ async function signInWithDevConnect() {
         <span>Basis Portal</span>
       </NuxtLink>
 
-      <el-menu class="portal-menu" :default-active="route.path" router>
-        <el-menu-item v-for="item in navigation" :key="item.path" :index="item.path">
-          <el-icon><component :is="item.icon" /></el-icon>
-          <span class="menu-label">{{ item.label }}</span>
-          <el-tag v-if="item.path === '/incidents'" class="incident-count" type="danger" effect="dark" size="small" round>
-            3
-          </el-tag>
-        </el-menu-item>
+      <el-menu class="portal-menu" :default-active="route.path">
+        <el-tooltip v-for="item in navigation" :key="item.path" :disabled="item.enabled !== false" :content="`Requires ${item.permission}`" placement="right">
+          <div>
+            <el-menu-item :index="item.path" :disabled="item.enabled === false" @click="navigate(item)">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span class="menu-label">{{ item.label }}</span>
+            </el-menu-item>
+          </div>
+        </el-tooltip>
       </el-menu>
 
       <div class="portal-account">
@@ -100,6 +107,10 @@ async function signInWithDevConnect() {
 .portal-shell {
   min-height: 100vh;
   background: #f5f7fa;
+}
+
+.portal-shell > .el-container {
+  min-width: 0;
 }
 
 .portal-aside {
@@ -148,11 +159,6 @@ async function signInWithDevConnect() {
 
 .portal-menu :deep(.el-menu-item.is-active) {
   background: #ecf5ff;
-}
-
-.incident-count {
-  margin-left: auto;
-  pointer-events: none;
 }
 
 .portal-account {
@@ -219,7 +225,9 @@ async function signInWithDevConnect() {
 }
 
 .portal-main {
+  min-width: 0;
   padding: 28px 32px;
+  overflow-x: hidden;
 }
 
 @media (max-width: 760px) {
@@ -241,15 +249,6 @@ async function signInWithDevConnect() {
   .portal-menu :deep(.el-menu-item) {
     justify-content: center;
     padding: 0 !important;
-  }
-
-  .incident-count {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    margin-left: 0;
-    transform: scale(0.8);
-    transform-origin: top right;
   }
 
   .portal-account {
