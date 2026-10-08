@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { projectCapabilities, portalCapabilities } from "../server/utils/authorization"
-import { memberCreateSchema, projectCreateSchema } from "../shared/contracts"
+import { applicationRedirectUrisSchema, applicationResourceSchema, memberCreateSchema, projectCreateSchema } from "../shared/contracts"
 import { PortalPermissions, ProjectPermissions } from "../shared/permissions"
 import type { AuthenticatedRequest } from "../server/utils/api-auth"
 
 function auth(permissions: string[]): AuthenticatedRequest {
-  return { claims: { sub: "00000000-0000-4000-8000-000000000001", permissions } as AuthenticatedRequest["claims"], user: { id: "00000000-0000-4000-8000-000000000001", name: "Test user", image: null } }
+  return { accessToken: "test", claims: { sub: "00000000-0000-4000-8000-000000000001", permissions } as AuthenticatedRequest["claims"], user: { id: "00000000-0000-4000-8000-000000000001", name: "Test user", image: null } }
 }
 
 describe("portal and project authorization", () => {
@@ -14,6 +14,19 @@ describe("portal and project authorization", () => {
     expect(capabilities.projectsRead).toBe(true)
     expect(capabilities.tasksRead).toBe(true)
     expect(capabilities.projectsCreate).toBe(false)
+  })
+
+  test("maps granular application permissions and wildcard grants", () => {
+    const scoped = portalCapabilities([
+      PortalPermissions.BiszPortal.Applications.read,
+      PortalPermissions.BiszPortal.ApplicationScopes.manage,
+    ])
+    expect(scoped.applicationsRead).toBe(true)
+    expect(scoped.applicationScopesManage).toBe(true)
+    expect(scoped.applicationOwnersManage).toBe(false)
+    const wildcard = portalCapabilities(["BiszPortal.all"])
+    expect(wildcard.applicationOwnersManage).toBe(true)
+    expect(wildcard.applicationRedirectUrisManage).toBe(true)
   })
 
   test("owners receive every local permission but still need the matching Basis permission", () => {
@@ -44,5 +57,11 @@ describe("request validation", () => {
   test("only accepts known project permissions and exact UUIDs", () => {
     expect(memberCreateSchema.safeParse({ userId: "00000000-0000-4000-8000-000000000001", permissions: [ProjectPermissions.tasksRead] }).success).toBe(true)
     expect(memberCreateSchema.safeParse({ userId: "nope", permissions: ["root"] }).success).toBe(false)
+  })
+
+  test("validates application resources and unique absolute redirect URIs", () => {
+    expect(applicationResourceSchema.safeParse({ resourceId: "urn:test", name: "Test", availableScopes: ["records.read"] }).success).toBe(true)
+    expect(applicationRedirectUrisSchema.safeParse({ redirectUris: ["https://example.test/callback"] }).success).toBe(true)
+    expect(applicationRedirectUrisSchema.safeParse({ redirectUris: ["relative", "relative"] }).success).toBe(false)
   })
 })

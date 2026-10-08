@@ -111,7 +111,6 @@ async function removeMember(member: ProjectMemberView) {
   } catch (caught: any) { ElMessage.error(caught?.data?.error_description || "The member could not be removed.") }
 }
 
-function formatDate(value: string) { return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value)) }
 function statusLabel(value: string) { return value.replace("_", " ") }
 </script>
 
@@ -125,22 +124,21 @@ function statusLabel(value: string) { return value.replace("_", " ") }
     </header>
 
     <AccessDenied v-if="!accessPending && (error || !capabilities.projectsRead)" description="You need BiszPortal.Projects.read to view projects. The navigation and workspace remain visible so everyone has the same portal structure." />
-    <el-card v-else shadow="never" class="project-surface" v-loading="pending">
+    <div v-else class="project-surface" v-loading="pending">
       <el-tabs v-model="activeTab">
         <el-tab-pane name="active"><template #label>Active <el-tag size="small" round>{{ projects.filter(p => p.status === 'active').length }}</el-tag></template></el-tab-pane>
         <el-tab-pane name="archived"><template #label>Archived <el-tag size="small" type="info" round>{{ projects.filter(p => p.status === 'archived').length }}</el-tag></template></el-tab-pane>
       </el-tabs>
-      <div v-if="filteredProjects.length" class="project-list">
-        <button v-for="project in filteredProjects" :key="project.id" class="project-row" type="button" @click="openProject(project)">
-          <span class="project-row__icon"><el-icon><FolderAdd /></el-icon></span>
-          <span class="project-row__main"><strong>{{ project.name }}</strong><small>{{ project.description.replace(/^#+\s*/m, '').slice(0, 120) || 'No README description yet.' }}</small></span>
-          <span class="project-row__metric"><strong>{{ project.memberCount }}</strong><small>members</small></span>
-          <span class="project-row__metric"><strong>{{ project.completedTaskCount }}/{{ project.taskCount }}</strong><small>tasks done</small></span>
-          <span class="project-row__updated"><small>Updated</small><span>{{ formatDate(project.updatedAt) }}</span></span>
-        </button>
+      <div v-if="filteredProjects.length" class="project-grid">
+        <ProjectCard
+          v-for="project in filteredProjects"
+          :key="project.id"
+          :project="project"
+          @select="openProject"
+        />
       </div>
       <el-empty v-else :description="activeTab === 'active' ? 'No active projects yet.' : 'No archived projects.'" />
-    </el-card>
+    </div>
 
     <el-drawer v-model="drawerOpen" size="min(720px, 94vw)" :destroy-on-close="false">
       <template #header><div><span class="drawer-eyebrow">{{ mode === 'create' ? 'New project' : selected?.slug }}</span><h2>{{ mode === 'create' ? 'Create a project' : selected?.name }}</h2></div></template>
@@ -183,23 +181,15 @@ function statusLabel(value: string) { return value.replace("_", " ") }
 
 <style scoped>
 .projects-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-.project-surface :deep(.el-card__body) { padding-top: 6px; }
 .project-surface :deep(.el-tabs__header) { margin-bottom: 10px; }
 .project-surface :deep(.el-tabs__nav-wrap::after) { height: 1px; }
 .project-surface :deep(.el-tabs__item) { gap: 7px; }
-.project-list { display: grid; }
-.project-row { display: grid; grid-template-columns: 42px minmax(240px, 1fr) 100px 110px 130px; align-items: center; gap: 14px; width: 100%; padding: 16px 10px; color: inherit; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--el-border-color-lighter); cursor: pointer; font: inherit; }
-.project-row:hover { background: var(--el-fill-color-light); }
-.project-row__icon { display: grid; width: 38px; height: 38px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); border-radius: 6px; place-items: center; }
-.project-row__main, .project-row__metric, .project-row__updated { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
-.project-row__main strong { font-size: 14px; }.project-row__main small { overflow: hidden; color: var(--el-text-color-secondary); text-overflow: ellipsis; white-space: nowrap; }
-.project-row__metric strong { font-size: 14px; }.project-row__metric small, .project-row__updated small { color: var(--el-text-color-secondary); font-size: 11px; }.project-row__updated span { font-size: 12px; }
+.project-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; padding-top: 6px; }
 .drawer-eyebrow { color: var(--el-text-color-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }.drawer-content h2, :deep(.el-drawer__header h2) { margin: 3px 0 0; color: var(--el-text-color-primary); font-size: 20px; }
 .drawer-actions, .drawer-toolbar { display: flex; justify-content: flex-end; gap: 8px; }.drawer-toolbar { margin-bottom: 18px; }
 .readme, .drawer-section { margin-bottom: 22px; border: 1px solid var(--el-border-color-light); border-radius: 6px; }.section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 14px; font-size: 12px; font-weight: 600; background: var(--el-fill-color-light); border-bottom: 1px solid var(--el-border-color-light); }
 .markdown-body { padding: 16px 20px; font-size: 13px; line-height: 1.65; }.markdown-body :deep(h1) { padding-bottom: 8px; font-size: 21px; border-bottom: 1px solid var(--el-border-color-light); }.markdown-body :deep(a) { color: var(--el-color-primary); }
 .member-card, .task-summary { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--el-border-color-lighter); }.member-card:last-child, .task-summary:last-child { border-bottom: 0; }.member-main { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 2px; }.member-main strong { font-size: 13px; }.member-main small { color: var(--el-text-color-secondary); font-size: 11px; text-transform: capitalize; }.task-summary { justify-content: space-between; font-size: 13px; }
 .add-member { display: flex; gap: 8px; padding: 12px 14px; }.permission-grid { display: grid; grid-template-columns: 1fr 1fr; }.member-actions { display: flex; justify-content: space-between; margin-top: 12px; }
-@media (max-width: 900px) { .project-row { grid-template-columns: 38px 1fr 90px; }.project-row__metric:first-of-type, .project-row__updated { display: none; } }
-@media (max-width: 600px) { .projects-header { align-items: stretch; flex-direction: column; }.projects-header > div { min-width: 0; }.projects-header > span { display: block; width: 100%; }.projects-header .el-button { width: 100%; }.project-row { grid-template-columns: 38px 1fr; }.project-row__metric { display: none; }.add-member { flex-direction: column; } }
+@media (max-width: 600px) { .projects-header { align-items: stretch; flex-direction: column; }.projects-header > div { min-width: 0; }.projects-header > span { display: block; width: 100%; }.projects-header .el-button { width: 100%; }.add-member { flex-direction: column; } }
 </style>

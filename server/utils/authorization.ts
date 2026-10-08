@@ -23,6 +23,12 @@ export function portalCapabilities(grants: readonly string[]): PortalCapabilitie
     incidentsCreate: has(PortalPermissions.BiszPortal.Incidents.create),
     incidentsUpdate: has(PortalPermissions.BiszPortal.Incidents.update),
     calendarRead: has(PortalPermissions.BiszPortal.Calendar.read),
+    applicationsRead: has(PortalPermissions.BiszPortal.Applications.read),
+    applicationOwnersManage: has(PortalPermissions.BiszPortal.ApplicationOwners.manage),
+    applicationResourcesManage: has(PortalPermissions.BiszPortal.ApplicationResources.manage),
+    applicationScopesManage: has(PortalPermissions.BiszPortal.ApplicationScopes.manage),
+    applicationPermissionsManage: has(PortalPermissions.BiszPortal.ApplicationPermissions.manage),
+    applicationRedirectUrisManage: has(PortalPermissions.BiszPortal.ApplicationRedirectUris.manage),
   }
 }
 

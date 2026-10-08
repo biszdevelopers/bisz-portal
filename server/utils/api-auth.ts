@@ -9,6 +9,7 @@ import {
 } from "~/server/utils/basis-auth"
 
 export type AuthenticatedRequest = {
+  accessToken: string
   claims: AccessTokenClaims
   user: {
     id: string
@@ -51,6 +52,7 @@ export async function authenticateRequest(event: H3Event): Promise<Authenticated
     }
 
     return {
+      accessToken,
       claims,
       user: {
         id: claims.sub,

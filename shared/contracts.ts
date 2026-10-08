@@ -34,6 +34,7 @@ export type ProjectSummary = {
   memberCount: number
   taskCount: number
   completedTaskCount: number
+  members: ProjectMemberView[]
   capabilities: ProjectCapabilities
 }
 
@@ -56,4 +57,42 @@ export type TaskView = {
   dueDate: string | null
   createdAt: string
   updatedAt: string
+}
+
+export const applicationRoleSchema = z.enum(["role.ADMIN", "role.GENERAL"])
+export type ApplicationRole = z.infer<typeof applicationRoleSchema>
+
+export const applicationOwnerCreateSchema = z.object({ userId: z.string().uuid(), role: applicationRoleSchema })
+export const applicationOwnerUpdateSchema = z.object({ role: applicationRoleSchema })
+export const applicationResourceSchema = z.object({
+  resourceId: z.string().trim().min(1),
+  name: z.string().trim().min(1).max(120),
+  availableScopes: z.array(z.string().trim().min(1)).default([]),
+})
+export const applicationResourceAttachSchema = z.object({ resourceId: z.string().trim().min(1) })
+export const applicationResourceRemoveSchema = z.object({ resourceId: z.string().trim().min(1), deleteDefinition: z.boolean().default(false) })
+export const applicationScopesSchema = z.object({ resourceScopes: z.record(z.string(), z.array(z.string())) })
+export const applicationPermissionSchema = z.object({ permission: z.string().min(1), description: z.string().trim().min(1) })
+export const applicationRedirectUrisSchema = z.object({ redirectUris: z.array(z.url()).min(1).refine((values) => new Set(values).size === values.length, "Redirect URIs must be unique") })
+
+export type ApplicationSummary = { clientId: string, name: string }
+export type ApplicationOwnerView = { userId: string, displayName: string, image: string | null, disabled: boolean, role: ApplicationRole }
+export type ApplicationResourceView = { resourceId: string, name: string, availableScopes: string[], grantedScopes: string[], claimCount: number }
+export type AvailableApplicationResource = Omit<ApplicationResourceView, "grantedScopes" | "claimCount">
+export type ApplicationCapabilities = { manageOwners: boolean, manageResources: boolean, manageScopes: boolean, managePermissions: boolean, manageRedirectUris: boolean }
+export type ApplicationDetail = ApplicationSummary & {
+  authorizationEndpoint: string
+  public: boolean
+  requireConsent: boolean
+  filterMode: "whitelist" | "blacklist" | null
+  filterContent: string[]
+  loginTypes: Array<"FIRST_PARTY" | "THIRD_PARTY" | "COMMON">
+  updatedAt: string
+  role: ApplicationRole
+  capabilities: ApplicationCapabilities
+  owners: ApplicationOwnerView[]
+  resources: ApplicationResourceView[]
+  availableResources: AvailableApplicationResource[]
+  permissions: Array<{ permission: string, description: string }>
+  redirectUris: string[]
 }

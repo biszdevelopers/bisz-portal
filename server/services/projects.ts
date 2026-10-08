@@ -8,6 +8,13 @@ import type { ProjectSummary, ProjectMemberView, TaskView } from "~/shared/contr
 
 function iso(value: Date) { return value.toISOString() }
 
+async function resolveUsers(userIds: string[]) {
+  const entries = await Promise.all(userIds.map(async (id) => {
+    try { return [id, await findBasisUser(id)] as const } catch { return [id, null] as const }
+  }))
+  return new Map<string, BasisUserView | null>(entries)
+}
+
 export async function listProjectSummaries(auth: AuthenticatedRequest): Promise<ProjectSummary[]> {
   const db = useDatabase()
   const rows = await db.select({ project: projects, membership: projectMembers }).from(projectMembers)
@@ -17,14 +24,27 @@ export async function listProjectSummaries(auth: AuthenticatedRequest): Promise<
   const visible = rows.filter(({ membership }) => projectCapabilities(auth, membership).read)
   if (!visible.length) return []
   const ids = visible.map(({ project }) => project.id)
-  const memberCounts = await db.select({ projectId: projectMembers.projectId, value: count() }).from(projectMembers)
-    .where(inArray(projectMembers.projectId, ids)).groupBy(projectMembers.projectId)
+  const membershipRows = await db.select().from(projectMembers).where(inArray(projectMembers.projectId, ids))
+  const users = await resolveUsers([...new Set(membershipRows.map((member) => member.userId))])
   const taskCounts = await db.select({
     projectId: tasks.projectId,
     value: count(),
     completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')::int`,
   }).from(tasks).where(inArray(tasks.projectId, ids)).groupBy(tasks.projectId)
-  const members = new Map(memberCounts.map((entry) => [entry.projectId, Number(entry.value)]))
+  const membersByProject = new Map<string, ProjectMemberView[]>()
+  for (const member of membershipRows) {
+    const memberList = membersByProject.get(member.projectId) ?? []
+    const user = users.get(member.userId)
+    memberList.push({
+      userId: member.userId,
+      displayName: user?.displayName ?? (member.userId === auth.user.id ? auth.user.name || "Basis user" : "Basis user"),
+      image: user?.image ?? (member.userId === auth.user.id ? auth.user.image : null),
+      role: member.role,
+      permissions: member.permissions,
+      joinedAt: iso(member.createdAt),
+    })
+    membersByProject.set(member.projectId, memberList)
+  }
   const taskMap = new Map(taskCounts.map((entry) => [entry.projectId, entry]))
 
   return visible.map(({ project, membership }) => ({
@@ -36,34 +56,18 @@ export async function listProjectSummaries(auth: AuthenticatedRequest): Promise<
     creatorId: project.creatorId,
     createdAt: iso(project.createdAt),
     updatedAt: iso(project.updatedAt),
-    memberCount: members.get(project.id) ?? 0,
+    memberCount: membersByProject.get(project.id)?.length ?? 0,
     taskCount: Number(taskMap.get(project.id)?.value ?? 0),
     completedTaskCount: Number(taskMap.get(project.id)?.completed ?? 0),
+    members: membersByProject.get(project.id) ?? [],
     capabilities: projectCapabilities(auth, membership),
   }))
-}
-
-async function resolveUsers(userIds: string[]) {
-  const entries = await Promise.all(userIds.map(async (id) => {
-    try { return [id, await findBasisUser(id)] as const } catch { return [id, null] as const }
-  }))
-  return new Map<string, BasisUserView | null>(entries)
 }
 
 export async function getProjectDetail(auth: AuthenticatedRequest, projectId: string) {
   const summary = (await listProjectSummaries(auth)).find((item) => item.id === projectId)
   if (!summary) return null
   const db = useDatabase()
-  const membershipRows = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId))
-  const users = await resolveUsers(membershipRows.map((member) => member.userId))
-  const members: ProjectMemberView[] = membershipRows.map((member) => ({
-    userId: member.userId,
-    displayName: users.get(member.userId)?.displayName ?? (member.userId === auth.user.id ? auth.user.name || "Basis user" : "Basis user"),
-    image: users.get(member.userId)?.image ?? (member.userId === auth.user.id ? auth.user.image : null),
-    role: member.role,
-    permissions: member.permissions,
-    joinedAt: iso(member.createdAt),
-  }))
   const taskRows = await db.select({ task: tasks, projectName: projects.name }).from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id)).where(eq(tasks.projectId, projectId))
   const linkedTasks: TaskView[] = taskRows.map(({ task, projectName }) => ({
@@ -77,7 +81,7 @@ export async function getProjectDetail(auth: AuthenticatedRequest, projectId: st
     createdAt: iso(task.createdAt),
     updatedAt: iso(task.updatedAt),
   }))
-  return { ...summary, members, tasks: linkedTasks }
+  return { ...summary, tasks: linkedTasks }
 }
 
 export function slugify(value: string) {

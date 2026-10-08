@@ -3,6 +3,7 @@ import {
   Bell,
   Calendar,
   Check,
+  Connection,
   DocumentChecked,
   FolderOpened,
   Grid,
@@ -42,10 +43,11 @@ const navigation = computed(() => [
   { label: "Tasks", path: "/tasks", icon: DocumentChecked, enabled: capabilities.value.tasksRead, permission: "BiszPortal.Tasks.read" },
   { label: "Incidents", path: "/incidents", icon: WarningFilled, enabled: capabilities.value.incidentsRead, permission: "BiszPortal.Incidents.read" },
   { label: "Calendar", path: "/calendar", icon: Calendar, enabled: capabilities.value.calendarRead, permission: "BiszPortal.Calendar.read" },
+  { label: "Applications", path: "/applications", icon: Connection, enabled: capabilities.value.applicationsRead, permission: "BiszPortal.Applications.read" },
 ])
 
 const pageTitle = computed(
-  () => navigation.value.find((item) => item.path === route.path)?.label ?? "Portal",
+  () => navigation.value.find((item) => route.path === item.path || route.path.startsWith(`${item.path}/`))?.label ?? "Portal",
 )
 
 function navigate(item: (typeof navigation.value)[number]) {

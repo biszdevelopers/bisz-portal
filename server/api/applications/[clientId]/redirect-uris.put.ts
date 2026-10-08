@@ -1,0 +1,4 @@
+import { applicationRedirectUrisSchema } from "~/shared/contracts"
+import { PortalPermissions } from "~/shared/permissions"
+import { proxyApplicationMutation } from "~/server/utils/application-mutation"
+export default defineEventHandler((event) => proxyApplicationMutation(event, PortalPermissions.BiszPortal.ApplicationRedirectUris.manage, "/redirect-uris", "PUT", applicationRedirectUrisSchema))
