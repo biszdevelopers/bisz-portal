@@ -39,6 +39,7 @@ export function portalCapabilities(
     incidentsCreate: has(PortalPermissions.BiszPortal.Incidents.create),
     incidentsUpdate: has(PortalPermissions.BiszPortal.Incidents.update),
     calendarRead: has(PortalPermissions.BiszPortal.Calendar.read),
+    usersRead: has(PortalPermissions.BiszPortal.Users.read),
     applicationsRead: has(PortalPermissions.BiszPortal.Applications.read),
     applicationsCreate: has(PortalPermissions.BiszPortal.Applications.create),
     applicationsUpdate: has(PortalPermissions.BiszPortal.Applications.update),

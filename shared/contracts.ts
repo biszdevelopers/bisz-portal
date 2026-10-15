@@ -83,6 +83,43 @@ export type TaskView = {
   updatedAt: string;
 };
 
+export const userListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type UserSummary = {
+  id: string;
+  displayName: string | null;
+  email: string;
+  image: string | null;
+};
+
+export type Pagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type UserPage = {
+  users: UserSummary[];
+  pagination: Pagination;
+};
+
+export type UserDetail = UserSummary & {
+  provider: string;
+  upstreamIssuer: string;
+  upstreamSubject: string;
+  emailSuffixId: string | null;
+  studentId: string | null;
+  schoolDistrict: string | null;
+  disabled: boolean;
+  tokensValidAfter: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export const applicationRoleSchema = z.enum(["role.ADMIN", "role.GENERAL"]);
 export type ApplicationRole = z.infer<typeof applicationRoleSchema>;
 

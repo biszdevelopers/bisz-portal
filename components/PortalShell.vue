@@ -12,6 +12,7 @@ import {
   Right,
   Sunny,
   SwitchButton,
+  User as UserIcon,
   WarningFilled,
 } from "@element-plus/icons-vue";
 import type { ThemePreference } from "~/composables/useTheme";
@@ -82,6 +83,13 @@ const navigation = computed(() => [
     icon: Calendar,
     enabled: capabilities.value.calendarRead,
     permission: "BiszPortal.Calendar.read",
+  },
+  {
+    label: "Users",
+    path: "/users",
+    icon: UserIcon,
+    enabled: capabilities.value.usersRead,
+    permission: "BiszPortal.Users.read",
   },
   {
     label: "Applications",

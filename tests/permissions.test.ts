@@ -10,6 +10,7 @@ import {
   applicationSettingsSchema,
   memberCreateSchema,
   projectCreateSchema,
+  userListQuerySchema,
 } from "../shared/contracts";
 import { PortalPermissions, ProjectPermissions } from "../shared/permissions";
 import type { AuthenticatedRequest } from "../server/utils/api-auth";
@@ -34,9 +35,11 @@ describe("portal and project authorization", () => {
     const capabilities = portalCapabilities([
       PortalPermissions.BiszPortal.Projects.read,
       PortalPermissions.BiszPortal.Tasks.read,
+      PortalPermissions.BiszPortal.Users.read,
     ]);
     expect(capabilities.projectsRead).toBe(true);
     expect(capabilities.tasksRead).toBe(true);
+    expect(capabilities.usersRead).toBe(true);
     expect(capabilities.projectsCreate).toBe(false);
   });
 
@@ -54,6 +57,7 @@ describe("portal and project authorization", () => {
     expect(wildcard.applicationsCreate).toBe(true);
     expect(wildcard.applicationsDelete).toBe(true);
     expect(wildcard.applicationCredentialsManage).toBe(true);
+    expect(wildcard.usersRead).toBe(true);
   });
 
   test("owners receive every local permission but still need the matching Basis permission", () => {
@@ -104,6 +108,17 @@ describe("portal and project authorization", () => {
 });
 
 describe("request validation", () => {
+  test("validates and defaults user pagination", () => {
+    expect(userListQuerySchema.parse({})).toEqual({ page: 1, pageSize: 20 });
+    expect(userListQuerySchema.parse({ page: "2", pageSize: "100" })).toEqual({
+      page: 2,
+      pageSize: 100,
+    });
+    expect(userListQuerySchema.safeParse({ pageSize: "101" }).success).toBe(
+      false,
+    );
+  });
+
   test("accepts project Markdown and rejects invalid slugs", () => {
     expect(
       projectCreateSchema.safeParse({
