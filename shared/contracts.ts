@@ -88,6 +88,11 @@ export const userListQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const userUpdateSchema = z.object({
+  displayName: z.string().trim().max(200).nullable(),
+  disabled: z.boolean(),
+}).strict();
+
 export type UserSummary = {
   id: string;
   displayName: string | null;

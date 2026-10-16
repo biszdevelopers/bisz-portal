@@ -86,13 +86,23 @@ function openUser(user: { id: string }) {
                 trigger="click"
                 @command="(command: string) => handleUserAction(command, row.id)"
               >
-                <el-tooltip content="More actions" placement="top">
-                  <el-button
-                    text
-                    circle
-                    :icon="MoreFilled"
-                    :aria-label="`More actions for ${row.displayName || row.email}`"
-                  />
+                <el-tooltip
+                  :content="
+                    capabilities.usersUpdate
+                      ? 'More actions'
+                      : 'Requires BiszPortal.Users.update'
+                  "
+                  placement="top"
+                >
+                  <span>
+                    <el-button
+                      text
+                      circle
+                      :icon="MoreFilled"
+                      :disabled="!capabilities.usersUpdate"
+                      :aria-label="`More actions for ${row.displayName || row.email}`"
+                    />
+                  </span>
                 </el-tooltip>
                 <template #dropdown>
                   <el-dropdown-menu>

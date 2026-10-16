@@ -11,6 +11,7 @@ import {
   memberCreateSchema,
   projectCreateSchema,
   userListQuerySchema,
+  userUpdateSchema,
 } from "../shared/contracts";
 import { PortalPermissions, ProjectPermissions } from "../shared/permissions";
 import type { AuthenticatedRequest } from "../server/utils/api-auth";
@@ -36,10 +37,12 @@ describe("portal and project authorization", () => {
       PortalPermissions.BiszPortal.Projects.read,
       PortalPermissions.BiszPortal.Tasks.read,
       PortalPermissions.BiszPortal.Users.read,
+      PortalPermissions.BiszPortal.Users.update,
     ]);
     expect(capabilities.projectsRead).toBe(true);
     expect(capabilities.tasksRead).toBe(true);
     expect(capabilities.usersRead).toBe(true);
+    expect(capabilities.usersUpdate).toBe(true);
     expect(capabilities.projectsCreate).toBe(false);
   });
 
@@ -58,6 +61,7 @@ describe("portal and project authorization", () => {
     expect(wildcard.applicationsDelete).toBe(true);
     expect(wildcard.applicationCredentialsManage).toBe(true);
     expect(wildcard.usersRead).toBe(true);
+    expect(wildcard.usersUpdate).toBe(true);
   });
 
   test("owners receive every local permission but still need the matching Basis permission", () => {
@@ -108,6 +112,22 @@ describe("portal and project authorization", () => {
 });
 
 describe("request validation", () => {
+  test("validates the editable user fields", () => {
+    expect(
+      userUpdateSchema.safeParse({
+        displayName: "User",
+        disabled: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      userUpdateSchema.safeParse({
+        displayName: "User",
+        disabled: false,
+        email: "changed@example.test",
+      }).success,
+    ).toBe(false);
+  });
+
   test("validates and defaults user pagination", () => {
     expect(userListQuerySchema.parse({})).toEqual({ page: 1, pageSize: 20 });
     expect(userListQuerySchema.parse({ page: "2", pageSize: "100" })).toEqual({
