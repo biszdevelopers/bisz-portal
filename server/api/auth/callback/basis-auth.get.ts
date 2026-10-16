@@ -10,7 +10,7 @@ import {
 } from "h3";
 
 import {
-  BASIS_PORTAL_SCOPE,
+  BASIS_PORTAL_AUTHORIZATION_SCOPES,
   basisAuthIssuer,
   basisPortalAudience,
   basisPortalOrigin,
@@ -105,7 +105,7 @@ export default defineEventHandler(async (event) => {
       redirect_uri: callbackUrl(),
       resource: basisPortalAudience(),
       response_type: "code",
-      scope: `openid profile email ${BASIS_PORTAL_SCOPE}`,
+      scope: BASIS_PORTAL_AUTHORIZATION_SCOPES.join(" "),
       state,
     });
 
@@ -137,12 +137,17 @@ export default defineEventHandler(async (event) => {
     );
     const profile = tokens.claims();
 
-    if (!profile?.sub) {
-      throw new Error("DevConnect did not return an ID-token profile");
+    if (!profile?.sub || !tokens.refresh_token) {
+      throw new Error(
+        "DevConnect did not return an ID-token profile and offline access",
+      );
     }
 
     await setUserSession(event, {
-      secure: { basisAccessToken: tokens.access_token },
+      secure: {
+        basisAccessToken: tokens.access_token,
+        basisRefreshToken: tokens.refresh_token,
+      },
       user: {
         email: typeof profile.email === "string" ? profile.email : null,
         id: profile.sub,

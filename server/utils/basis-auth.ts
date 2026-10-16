@@ -1,4 +1,11 @@
 export const BASIS_PORTAL_SCOPE = "noesis.access";
+export const BASIS_PORTAL_AUTHORIZATION_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  BASIS_PORTAL_SCOPE,
+] as const;
 
 export function requiredEnvironment(name: string) {
   const value = process.env[name];

@@ -12,7 +12,7 @@ http://localhost:4005/api/auth/callback/basis-auth
 
 Copy `.env.example` to `.env.local` and provide the registered client ID and secret. Set `BASIS_PORTAL_ORIGIN` to the public portal origin and use a unique `NUXT_SESSION_PASSWORD` of at least 32 random characters. For loopback HTTP origins (`localhost`, `127.0.0.1`, or `::1`), the portal deliberately issues a non-`Secure` development session cookie. All non-loopback environments require HTTPS. Secrets belong only in ignored environment files or the deployment secret store.
 
-The client requests `openid profile email noesis.access` for the `devconnect://noesis` resource. `noesis.access` only indicates that the access token may access BISZ Portal. It does not contain or imply permissions; every operation still requires its delegated `BiszPortal.*` permission.
+The client requests `openid profile email offline_access noesis.access` for the `devconnect://noesis` resource. `offline_access` makes Basis Auth issue a rotating refresh token, which the portal retains alongside the access token in server-only encrypted session data. The local portal session uses the same 30-day maximum lifetime as the Basis Auth refresh-token family. `noesis.access` only indicates that the access token may access BISZ Portal. It does not contain or imply permissions; every operation still requires its delegated `BiszPortal.*` permission.
 
 The portal's `BASIS_AUTH_CLIENT_ID` and `BASIS_AUTH_RESOURCE` must match Basis Auth's `MANAGEMENT_PORTAL_CLIENT_ID` and `MANAGEMENT_PORTAL_AUDIENCE`. The portal scope is `noesis.access`, matching `MANAGEMENT_PORTAL_SCOPE`. Basis Auth validates those three actor-token properties before any internal application-management operation runs.
 
@@ -66,7 +66,7 @@ Errors use the corresponding schema:
 
 ## Reading the signed-in user
 
-The Overview page is the live reference. After the OIDC flow completes, it initializes the user from the validated ID-token claims and retains the short-lived Basis access token inside Nuxt Auth Utils' encrypted, HttpOnly session cookie. The compact ID-token picture URL is used instead of the potentially large UserInfo data URL so the sealed session stays within browser cookie limits. The access token is stored in server-only `secure` session data, which Nuxt Auth Utils omits from its client session endpoint.
+The Overview page is the live reference. After the OIDC flow completes, it initializes the user from the validated ID-token claims and retains the short-lived Basis access token and refresh token inside Nuxt Auth Utils' encrypted, HttpOnly session cookie. The compact ID-token picture URL is used instead of the potentially large UserInfo data URL so the sealed session stays within browser cookie limits. Both tokens are stored in server-only `secure` session data, which Nuxt Auth Utils omits from its client session endpoint.
 
 The page calls `/api/me` using the same-origin cookie only. `/api/me` decrypts the Nuxt session server-side, retrieves and validates the embedded Basis access token, and returns the OIDC profile fields already retained in that encrypted session.
 
@@ -76,7 +76,7 @@ Client request example:
 const response = await fetch("/api/me");
 ```
 
-Never expose the access token through component props, Nuxt session JSON, browser storage, logs, or API responses. Never forward the Basis Auth browser cookie or expose the client secret. The current setup does not refresh access tokens; a user signs in again after the Basis access token expires.
+Never expose either token through component props, Nuxt session JSON, browser storage, logs, or API responses. Never forward the Basis Auth browser cookie or expose the client secret. The portal now acquires offline access at login and securely retains the refresh token; automatic access-token rotation is intentionally handled separately.
 
 For UI-only identity checks in a Nuxt server route, use the Nuxt session:
 
