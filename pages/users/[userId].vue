@@ -162,9 +162,6 @@ async function saveUser() {
         </el-form-item>
         <el-form-item label="Email">
           <el-input :model-value="user?.email" disabled />
-          <div class="immutable-help">
-            Email is an immutable account identifier.
-          </div>
         </el-form-item>
         <el-form-item>
           <el-checkbox
