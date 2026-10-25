@@ -211,6 +211,14 @@ export const applicationPermissionSchema = z.object({
   permission: z.string().min(1),
   description: z.string().trim().min(1),
 });
+export const applicationDefaultPermissionsSchema = z.object({
+  permissions: z
+    .array(z.string().trim().min(1))
+    .refine(
+      (values) => new Set(values).size === values.length,
+      "Default permissions must be unique",
+    ),
+});
 export const applicationRedirectUrisSchema = z.object({
   redirectUris: z
     .array(z.url())
@@ -294,6 +302,7 @@ export type ApplicationDetail = ApplicationSummary & {
   resources: ApplicationResourceView[];
   availableResources: AvailableApplicationResource[];
   permissions: Array<{ permission: string; description: string }>;
+  defaultPermissions: string[];
   permissionCatalogVersion: number;
   redirectUris: string[];
 };

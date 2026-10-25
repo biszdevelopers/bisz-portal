@@ -48,6 +48,7 @@ const resourceForm = reactive({ resourceId: "", name: "", scopesText: "" });
 const permissionDialog = ref(false);
 const permissionMode = ref<"create" | "edit">("edit");
 const permissionForm = reactive({ permission: "", description: "" });
+const defaultPermissionSelection = ref<string[]>([]);
 const redirectDialog = ref(false);
 const redirectIndex = ref<number | null>(null);
 const redirectValue = ref("");
@@ -94,6 +95,7 @@ watch(
   application,
   (value) => {
     if (!value) return;
+    defaultPermissionSelection.value = [...value.defaultPermissions];
     if (!generator.redirectUri)
       generator.redirectUri = value.redirectUris[0] ?? "";
     if (
@@ -375,6 +377,23 @@ async function deletePermission(permission: any) {
     })
   )
     ElMessage.success("Permission definition deleted");
+}
+
+async function saveDefaultPermissions() {
+  if (
+    await mutate("/default-permissions", "PUT", {
+      permissions: defaultPermissionSelection.value,
+    })
+  )
+    ElMessage.success("Default grant permissions updated");
+}
+
+function setDefaultPermission(permission: string, selected: boolean) {
+  defaultPermissionSelection.value = selected
+    ? [...new Set([...defaultPermissionSelection.value, permission])]
+    : defaultPermissionSelection.value.filter(
+        (candidate) => candidate !== permission,
+      );
 }
 
 function editRedirect(index: number | null) {
@@ -697,19 +716,43 @@ onMounted(() => void refreshGenerator());
 
           <el-tab-pane label="Permissions" name="permissions">
             <div class="tab-toolbar">
-              <span>Permission definitions</span
-              ><el-button
-                type="primary"
-                :icon="Plus"
-                :disabled="!application.capabilities.managePermissions"
-                @click="createPermission"
-                >Add permission</el-button
-              >
+              <div>
+                <span>Permission definitions</span>
+                <p class="toolbar-description">
+                  Default permissions are granted when a user first signs in;
+                  changes do not update existing users.
+                </p>
+              </div>
+              <div class="row-actions">
+                <el-button
+                  :disabled="!application.capabilities.managePermissions"
+                  :loading="saving"
+                  @click="saveDefaultPermissions"
+                  >Save</el-button
+                ><el-button
+                  type="primary"
+                  :icon="Plus"
+                  :disabled="!application.capabilities.managePermissions"
+                  @click="createPermission"
+                  >Add permission</el-button
+                >
+              </div>
             </div>
             <el-table
               :data="application.permissions"
               empty-text="No permission definitions"
             >
+              <el-table-column label="Default" width="90" align="center"
+                ><template #default="{ row }"
+                  ><el-checkbox
+                    :model-value="
+                      defaultPermissionSelection.includes(row.permission)
+                    "
+                    :disabled="!application.capabilities.managePermissions"
+                    :aria-label="`Grant ${row.permission} by default`"
+                    @change="setDefaultPermission(row.permission, Boolean($event))"
+                  /></template
+              ></el-table-column>
               <el-table-column
                 prop="permission"
                 label="Permission"
@@ -1138,6 +1181,10 @@ pre {
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
+}
+.toolbar-description {
+  margin: 6px 0 0;
+  color: var(--el-text-color-secondary);
 }
 @media (max-width: 700px) {
   .application-header,

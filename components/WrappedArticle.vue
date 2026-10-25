@@ -47,14 +47,30 @@ defineProps<{
   max-width: 100%;
 }
 
+.wrapped-article :deep(table) {
+  border-collapse: collapse;
+}
+
+.wrapped-article :deep(th),
+.wrapped-article :deep(td) {
+  padding: 8px 12px;
+  border: 1px solid var(--el-border-color);
+}
+
 .wrapped-article :deep(pre) {
   overflow-x: auto;
   padding: 16px;
   border-radius: 6px;
   background: var(--el-fill-color-light);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 }
 
 .wrapped-article :deep(code) {
   font-family: var(--el-font-family);
+}
+
+.wrapped-article :deep(pre code) {
+  font-family: inherit;
 }
 </style>

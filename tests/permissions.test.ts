@@ -5,6 +5,7 @@ import {
 } from "../server/utils/authorization";
 import {
   applicationCreateSchema,
+  applicationDefaultPermissionsSchema,
   applicationRedirectUrisSchema,
   applicationResourceSchema,
   applicationSettingsSchema,
@@ -112,6 +113,22 @@ describe("portal and project authorization", () => {
 });
 
 describe("request validation", () => {
+  test("validates unique default grant permissions", () => {
+    expect(
+      applicationDefaultPermissionsSchema.safeParse({
+        permissions: ["BiszPortal.Users.read", "BiszPortal.Users.update"],
+      }).success,
+    ).toBe(true);
+    expect(
+      applicationDefaultPermissionsSchema.safeParse({
+        permissions: ["BiszPortal.Users.read", "BiszPortal.Users.read"],
+      }).success,
+    ).toBe(false);
+    expect(
+      applicationDefaultPermissionsSchema.safeParse({ permissions: [] }).success,
+    ).toBe(true);
+  });
+
   test("validates the editable user fields", () => {
     expect(
       userUpdateSchema.safeParse({

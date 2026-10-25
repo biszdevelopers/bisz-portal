@@ -6,7 +6,6 @@ import {
   validateAssetsToken,
 } from "~/server/utils/assets-auth";
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
-import { DelegatedPermissionSet } from "@basis/schema/permissions";
 import {
   PortalPermissions,
   projectCreationAssetPermissionValues,
