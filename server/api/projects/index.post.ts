@@ -1,8 +1,15 @@
+import { DelegatedPermissionSet } from "@basis/schema/permissions";
 import { apiResult } from "~/server/utils/api-response";
 import { requirePortalPermission } from "~/server/utils/authorization";
+import {
+  assetsAccessToken,
+  validateAssetsToken,
+} from "~/server/utils/assets-auth";
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
+import { DelegatedPermissionSet } from "@basis/schema/permissions";
 import {
   PortalPermissions,
+  projectCreationAssetPermissionValues,
   projectPermissionValues,
 } from "~/shared/permissions";
 import { projectCreateSchema } from "~/shared/contracts";
@@ -17,6 +24,41 @@ export default defineEventHandler(async (event) => {
     PortalPermissions.BiszPortal.Projects.create,
   );
   if (auth instanceof APIError) return apiResult(event, auth);
+  const assetToken = await assetsAccessToken(event);
+  if (assetToken instanceof APIError) return apiResult(event, assetToken);
+
+  const assetClaims = await validateAssetsToken(assetToken, auth.user.id).catch(
+    () => null,
+  );
+  if (!assetClaims) {
+    return apiResult(
+      event,
+      new APIError(
+        "assets_connection_expired",
+        "Connect to DevConnect Assets again",
+        401,
+        "assets_connection_expired",
+      ),
+    );
+  }
+
+  const permissions = new DelegatedPermissionSet(assetClaims.permissions);
+  if (
+    !projectCreationAssetPermissionValues.every((permission) =>
+      permissions.has(permission),
+    )
+  ) {
+    return apiResult(
+      event,
+      new APIError(
+        "forbidden",
+        "Assets.Assets.create and Assets.Projects.create are required to create a project",
+        403,
+        "forbidden",
+      ),
+    );
+  }
+
   const body = await parseBody(event, projectCreateSchema);
   if (body instanceof APIError) return apiResult(event, body);
   const slug = body.slug || slugify(body.name);

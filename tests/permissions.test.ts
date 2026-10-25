@@ -117,6 +117,7 @@ describe("request validation", () => {
       userUpdateSchema.safeParse({
         displayName: "User",
         disabled: false,
+        applications: [],
       }).success,
     ).toBe(true);
     expect(
@@ -124,8 +125,17 @@ describe("request validation", () => {
         displayName: "User",
         disabled: false,
         email: "changed@example.test",
+        applications: [],
       }).success,
     ).toBe(false);
+    expect(userUpdateSchema.safeParse({
+      displayName: "User",
+      disabled: false,
+      applications: [
+        { applicationId: "portal", catalogVersion: 1, grants: ["BiszPortal.Users.read"] },
+        { applicationId: "portal", catalogVersion: 1, grants: [] },
+      ],
+    }).success).toBe(false);
   });
 
   test("validates and defaults user pagination", () => {

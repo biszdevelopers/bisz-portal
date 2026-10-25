@@ -34,11 +34,29 @@ export const incidentStatus = pgEnum("incident_status", [
   "resolved",
 ]);
 
+export const assetConnections = pgTable("asset_connections", {
+  userId: uuid("user_id").primaryKey(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const portalAuthTokens = pgTable("portal_auth_tokens", {
+  sessionId: text("session_id").primaryKey(),
+  userId: uuid("user_id").notNull(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("portal_auth_tokens_user_id_idx").on(table.userId)]);
+
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   description: text("description").notNull().default(""),
+  githubRepository: text("github_repository"),
   status: projectStatus("status").notNull().default("active"),
   creatorId: uuid("creator_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })

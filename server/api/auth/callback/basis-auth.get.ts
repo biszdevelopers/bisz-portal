@@ -1,4 +1,5 @@
 import * as oidc from "openid-client";
+import { randomUUID } from "node:crypto";
 import {
   createError,
   deleteCookie,
@@ -13,9 +14,9 @@ import {
   BASIS_PORTAL_AUTHORIZATION_SCOPES,
   basisAuthIssuer,
   basisPortalAudience,
-  basisPortalOrigin,
-  requiredEnvironment,
 } from "~/server/utils/basis-auth";
+import { basisCallbackUrl, basisOidcConfiguration } from "~/server/utils/basis-oidc";
+import { deletePortalTokens, savePortalTokens } from "~/server/utils/portal-auth-tokens";
 
 const transactionCookieOptions = {
   httpOnly: true,
@@ -30,31 +31,6 @@ const transactionCookieNames = {
   state: "basis_oidc_state",
   verifier: "basis_oidc_verifier",
 };
-
-function callbackUrl() {
-  return `${basisPortalOrigin()}/api/auth/callback/basis-auth`;
-}
-
-function usesLocalHttpIssuer(issuer: URL) {
-  return (
-    issuer.protocol === "http:" &&
-    ["localhost", "127.0.0.1", "::1"].includes(issuer.hostname)
-  );
-}
-
-async function oidcConfiguration() {
-  const issuer = new URL(basisAuthIssuer());
-
-  return oidc.discovery(
-    issuer,
-    requiredEnvironment("BASIS_AUTH_CLIENT_ID"),
-    { redirect_uris: [callbackUrl()] },
-    oidc.ClientSecretBasic(requiredEnvironment("BASIS_AUTH_CLIENT_SECRET")),
-    usesLocalHttpIssuer(issuer)
-      ? { execute: [oidc.allowInsecureRequests] }
-      : undefined,
-  );
-}
 
 function clearTransaction(event: Parameters<typeof getCookie>[0]) {
   for (const name of Object.values(transactionCookieNames)) {
@@ -73,7 +49,7 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const configuration = await oidcConfiguration();
+    const configuration = await basisOidcConfiguration();
     const state = oidc.randomState();
     const nonce = oidc.randomNonce();
     const verifier = oidc.randomPKCECodeVerifier();
@@ -102,7 +78,7 @@ export default defineEventHandler(async (event) => {
       code_challenge: challenge,
       code_challenge_method: "S256",
       nonce,
-      redirect_uri: callbackUrl(),
+      redirect_uri: basisCallbackUrl(),
       resource: basisPortalAudience(),
       response_type: "code",
       scope: BASIS_PORTAL_AUTHORIZATION_SCOPES.join(" "),
@@ -125,7 +101,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const configuration = await oidcConfiguration();
+    const configuration = await basisOidcConfiguration();
     const tokens = await oidc.authorizationCodeGrant(
       configuration,
       getRequestURL(event),
@@ -143,21 +119,27 @@ export default defineEventHandler(async (event) => {
       );
     }
 
-    await setUserSession(event, {
-      secure: {
-        basisAccessToken: tokens.access_token,
-        basisRefreshToken: tokens.refresh_token,
-      },
-      user: {
-        email: typeof profile.email === "string" ? profile.email : null,
-        id: profile.sub,
-        image:
-          typeof profile.picture === "string"
-            ? new URL(profile.picture, `${basisAuthIssuer()}/`).toString()
-            : null,
-        name: typeof profile.name === "string" ? profile.name : null,
-      },
-    });
+    const priorSessionId = (await getUserSession(event)).secure?.basisSessionId;
+    const sessionId = randomUUID();
+    await savePortalTokens(sessionId, profile.sub, tokens);
+    try {
+      await replaceUserSession(event, {
+        secure: { basisSessionId: sessionId },
+        user: {
+          email: typeof profile.email === "string" ? profile.email : null,
+          id: profile.sub,
+          image:
+            typeof profile.picture === "string"
+              ? new URL(profile.picture, `${basisAuthIssuer()}/`).toString()
+              : null,
+          name: typeof profile.name === "string" ? profile.name : null,
+        },
+      });
+    } catch (error) {
+      await deletePortalTokens(sessionId);
+      throw error;
+    }
+    if (priorSessionId) await deletePortalTokens(priorSessionId).catch(() => {});
   } catch {
     throw createError({
       statusCode: 401,

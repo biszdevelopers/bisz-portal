@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  CopyDocument,
   Delete,
   EditPen,
   Link,
@@ -449,11 +448,6 @@ async function refreshGenerator() {
   generatorUrl.value = `${application.value.authorizationEndpoint}?${params.toString()}`;
 }
 
-async function copy(value: string) {
-  await navigator.clipboard.writeText(value);
-  ElMessage.success("Copied");
-}
-
 watch(
   () => [
     generator.redirectUri,
@@ -538,7 +532,7 @@ onMounted(() => void refreshGenerator());
         </el-descriptions>
       </el-card>
 
-      <el-card shadow="never" class="configuration-card">
+      <!-- <el-card shadow="never" class="configuration-card"> -->
         <el-tabs v-model="activeTab">
           <el-tab-pane label="Owners" name="owners">
             <div class="tab-toolbar">
@@ -866,9 +860,7 @@ onMounted(() => void refreshGenerator());
               <div class="generator-actions">
                 <el-button :icon="Refresh" @click="refreshGenerator"
                   >Regenerate</el-button
-                ><el-button :icon="CopyDocument" @click="copy(generatorUrl)"
-                  >Copy URL</el-button
-                ><el-button
+                ><CopyButton :value="generatorUrl" label="Copy URL" /><el-button
                   v-if="generator.integration"
                   type="primary"
                   :icon="Link"
@@ -885,7 +877,7 @@ onMounted(() => void refreshGenerator());
             </el-form>
           </el-tab-pane>
         </el-tabs>
-      </el-card>
+      <!-- </el-card> -->
     </template>
 
     <el-dialog
@@ -1026,8 +1018,11 @@ onMounted(() => void refreshGenerator());
         type="textarea"
         :rows="3"
       /><template #footer
-        ><el-button @click="copy(clientSecret)">Copy secret</el-button
-        ><el-button
+        ><CopyButton
+          :value="clientSecret"
+          label="Copy secret"
+          success-message="Client secret copied"
+        /><el-button
           type="primary"
           @click="
             secretDialog = false;

@@ -7,8 +7,10 @@ declare module "#auth-utils" {
   }
 
   interface SecureSessionData {
-    basisAccessToken: string;
-    basisRefreshToken: string;
+    basisSessionId?: string;
+    /** Legacy sealed-cookie tokens, migrated on the next authenticated request. */
+    basisAccessToken?: string;
+    basisRefreshToken?: string;
   }
 }
 

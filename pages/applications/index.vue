@@ -84,10 +84,6 @@ async function closeSecret() {
   );
 }
 
-async function copyCreatedSecret() {
-  await navigator.clipboard.writeText(createdSecret.value);
-  ElMessage.success("Client secret copied");
-}
 </script>
 
 <template>
@@ -210,8 +206,11 @@ async function copyCreatedSecret() {
         :rows="3"
       />
       <template #footer
-        ><el-button @click="copyCreatedSecret">Copy secret</el-button
-        ><el-button type="primary" @click="closeSecret"
+        ><CopyButton
+          :value="createdSecret"
+          label="Copy secret"
+          success-message="Client secret copied"
+        /><el-button type="primary" @click="closeSecret"
           >I have copied it</el-button
         ></template
       >

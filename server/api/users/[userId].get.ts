@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   const userId = encodeURIComponent(getRouterParam(event, "userId") ?? "");
   const result = await basisApplicationsRequest<{ user: BasisUserDetail }>(
     auth,
-    `/users/${userId}`,
+    `/management/users/${userId}`,
   );
   if (result instanceof APIError) return apiResult(event, result);
 

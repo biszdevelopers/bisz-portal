@@ -22,6 +22,18 @@ export const PortalPermissions = definePermissionTree({
   },
 });
 
+export const AssetsPermissions = definePermissionTree({
+  Assets: {
+    Assets: { create: true },
+    Projects: { create: true },
+  },
+});
+
+export const projectCreationAssetPermissionValues = [
+  AssetsPermissions.Assets.Assets.create,
+  AssetsPermissions.Assets.Projects.create,
+] as const;
+
 export const ProjectPermissions = {
   projectRead: "project.read",
   projectUpdate: "project.update",
@@ -67,6 +79,11 @@ export type PortalCapabilities = {
   applicationCredentialsManage: boolean;
 };
 
+export type AssetsCapabilities = {
+  assetsCreate: boolean;
+  projectsCreate: boolean;
+};
+
 export type ProjectCapabilities = {
   read: boolean;
   update: boolean;
@@ -103,4 +120,9 @@ export const emptyPortalCapabilities: PortalCapabilities = {
   applicationPermissionsManage: false,
   applicationRedirectUrisManage: false,
   applicationCredentialsManage: false,
+};
+
+export const emptyAssetsCapabilities: AssetsCapabilities = {
+  assetsCreate: false,
+  projectsCreate: false,
 };

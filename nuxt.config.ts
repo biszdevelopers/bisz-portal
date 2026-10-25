@@ -1,5 +1,6 @@
 import { isAbsolute, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
 
@@ -18,7 +19,25 @@ export default defineNuxtConfig({
   srcDir: ".",
   modules: ["@element-plus/nuxt", "nuxt-auth-utils"],
   css: ["~/assets/css/main.css"],
+  vite: {
+    plugins: [tailwindcss()],
+  },
   runtimeConfig: {
+    assetsClientId:
+      process.env.BASIS_ASSETS_CLIENT_ID ??
+      "66d015c8-1e3f-4a0d-b0f5-3bc3c6b72a86",
+    assetsClientSecret: process.env.BASIS_ASSETS_CLIENT_SECRET ?? "",
+    assetsTokenKey: process.env.BASIS_ASSETS_TOKEN_KEY ?? "",
+    assetsApiUrl: process.env.BISZ_ASSETS_API_URL ?? "http://localhost:5000",
+    githubAppId: process.env.GITHUB_APP_ID ?? "",
+    githubAppPrivateKeyPath:
+      process.env.GITHUB_APP_PRIVATE_KEY_PATH ?? "",
+    githubDnsServers:
+      process.env.GITHUB_DNS_SERVERS ?? "1.1.1.1,8.8.8.8",
+    public: {
+      assetsApiUrl:
+        process.env.NUXT_PUBLIC_BISZ_ASSETS_API_URL ?? "http://localhost:5000",
+    },
     session: {
       password: process.env.NUXT_SESSION_PASSWORD ?? "",
       maxAge: 30 * 24 * 60 * 60,

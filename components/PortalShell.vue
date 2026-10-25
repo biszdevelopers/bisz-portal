@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   Bell,
+  Collection,
   Calendar,
   Check,
   Connection,
@@ -56,6 +57,7 @@ function handleThemeCommand(command: ThemePreference) {
 
 const navigation = computed(() => [
   { label: "Overview", path: "/", icon: Grid },
+  { label: "Assets", path: "/assets", icon: Collection },
   {
     label: "Projects",
     path: "/projects",
@@ -144,6 +146,7 @@ async function logout() {
 
   loggingOut.value = true;
   try {
+    clearAllAssetsBrowserTokens();
     await clearUserSession();
     await navigateTo("/");
     await refreshNuxtData();
@@ -156,9 +159,8 @@ async function logout() {
 <template>
   <el-container class="portal-shell">
     <el-aside class="portal-aside" width="220px">
-      <NuxtLink class="portal-brand" to="/" aria-label="Basis Portal">
-        <span class="portal-brand__mark">B</span>
-        <span>Basis Portal</span>
+      <NuxtLink class="portal-brand" to="/" aria-label="DevConnect">
+        <span>DevConnect</span>
       </NuxtLink>
 
       <el-menu class="portal-menu" :default-active="route.path">

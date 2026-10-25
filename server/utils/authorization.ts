@@ -14,6 +14,8 @@ import { APIError } from "~/server/utils/basis-schema";
 import {
   PortalPermissions,
   ProjectPermissions,
+  AssetsPermissions,
+  type AssetsCapabilities,
   type PortalCapabilities,
   type ProjectCapabilities,
   type ProjectPermission,
@@ -63,6 +65,16 @@ export function portalCapabilities(
     applicationCredentialsManage: has(
       PortalPermissions.BiszPortal.ApplicationCredentials.manage,
     ),
+  };
+}
+
+export function assetsCapabilities(
+  grants: readonly string[],
+): AssetsCapabilities {
+  const set = new DelegatedPermissionSet(grants);
+  return {
+    assetsCreate: set.has(AssetsPermissions.Assets.Assets.create),
+    projectsCreate: set.has(AssetsPermissions.Assets.Projects.create),
   };
 }
 

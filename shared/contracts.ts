@@ -27,6 +27,40 @@ export const projectUpdateSchema = z.object({
   description: z.string().max(50_000),
 });
 
+export const repositoryValidationSchema = z
+  .object({
+    repositoryUrl: z.string().trim().min(1).max(2_048),
+  })
+  .strict();
+
+export type RepositoryValidationResult = {
+  repository: {
+    name: string;
+    fullName: string;
+    url: string;
+    description: string | null;
+    defaultBranch: string;
+    private: boolean;
+    archived: boolean;
+    owner: {
+      login: string;
+      avatarUrl: string;
+    };
+    stars: number;
+    forks: number;
+    openIssues: number;
+    updatedAt: string;
+    pushedAt: string | null;
+  };
+  readme: {
+    content: string;
+    url: string;
+    editUrl: string;
+  };
+  status: number;
+  code: string | number;
+};
+
 export const memberCreateSchema = z.object({
   userId: z.string().uuid(),
   permissions: z
@@ -51,6 +85,7 @@ export type ProjectSummary = {
   name: string;
   slug: string;
   description: string;
+  githubRepository: string | null;
   status: "active" | "archived";
   creatorId: string;
   createdAt: string;
@@ -91,7 +126,28 @@ export const userListQuerySchema = z.object({
 export const userUpdateSchema = z.object({
   displayName: z.string().trim().max(200).nullable(),
   disabled: z.boolean(),
+  applications: z.array(z.object({
+    applicationId: z.string().min(1),
+    catalogVersion: z.number().int().min(1),
+    grants: z.array(z.string().min(1)),
+  }).strict()).refine(
+    (applications) => new Set(applications.map(({ applicationId }) => applicationId)).size === applications.length,
+    "Application updates must be unique",
+  ),
 }).strict();
+
+export type UserPermissionDefinition = {
+  permission: string;
+  description: string;
+};
+
+export type UserApplicationPermissions = {
+  applicationId: string;
+  name: string;
+  catalogVersion: number;
+  permissions: UserPermissionDefinition[];
+  grants: string[];
+};
 
 export type UserSummary = {
   id: string;
@@ -123,6 +179,7 @@ export type UserDetail = UserSummary & {
   tokensValidAfter: string | null;
   createdAt: string;
   updatedAt: string;
+  applications: UserApplicationPermissions[];
 };
 
 export const applicationRoleSchema = z.enum(["role.ADMIN", "role.GENERAL"]);
@@ -237,5 +294,6 @@ export type ApplicationDetail = ApplicationSummary & {
   resources: ApplicationResourceView[];
   availableResources: AvailableApplicationResource[];
   permissions: Array<{ permission: string; description: string }>;
+  permissionCatalogVersion: number;
   redirectUris: string[];
 };
