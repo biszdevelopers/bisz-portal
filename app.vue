@@ -12,13 +12,15 @@ const themeInitScript = `(() => {
     document.documentElement.classList.toggle("dark", isDark)
     document.documentElement.style.colorScheme = isDark ? "dark" : "light"
   } catch {}
-})()`
+})()`;
 
 useHead({
   meta: [{ name: "color-scheme", content: "light dark" }],
-  script: [{ key: "theme-init", innerHTML: themeInitScript, tagPosition: "head" }],
-})
+  script: [
+    { key: "theme-init", innerHTML: themeInitScript, tagPosition: "head" },
+  ],
+});
 
-const { initializeTheme } = useTheme()
-initializeTheme()
+const { initializeTheme } = useTheme();
+initializeTheme();
 </script>

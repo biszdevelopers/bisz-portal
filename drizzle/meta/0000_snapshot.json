@@ -93,12 +93,8 @@
           "name": "incidents_project_id_projects_id_fk",
           "tableFrom": "incidents",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -193,12 +189,8 @@
           "name": "project_members_project_id_projects_id_fk",
           "tableFrom": "project_members",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -206,10 +198,7 @@
       "compositePrimaryKeys": {
         "project_members_project_id_user_id_pk": {
           "name": "project_members_project_id_user_id_pk",
-          "columns": [
-            "project_id",
-            "user_id"
-          ]
+          "columns": ["project_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -283,9 +272,7 @@
         "projects_slug_unique": {
           "name": "projects_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},
@@ -379,12 +366,8 @@
           "name": "tasks_project_id_projects_id_fk",
           "tableFrom": "tasks",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -400,46 +383,27 @@
     "public.incident_severity": {
       "name": "incident_severity",
       "schema": "public",
-      "values": [
-        "low",
-        "medium",
-        "high",
-        "critical"
-      ]
+      "values": ["low", "medium", "high", "critical"]
     },
     "public.incident_status": {
       "name": "incident_status",
       "schema": "public",
-      "values": [
-        "open",
-        "investigating",
-        "resolved"
-      ]
+      "values": ["open", "investigating", "resolved"]
     },
     "public.project_member_role": {
       "name": "project_member_role",
       "schema": "public",
-      "values": [
-        "owner",
-        "member"
-      ]
+      "values": ["owner", "member"]
     },
     "public.project_status": {
       "name": "project_status",
       "schema": "public",
-      "values": [
-        "active",
-        "archived"
-      ]
+      "values": ["active", "archived"]
     },
     "public.task_status": {
       "name": "task_status",
       "schema": "public",
-      "values": [
-        "todo",
-        "in_progress",
-        "done"
-      ]
+      "values": ["todo", "in_progress", "done"]
     }
   },
   "schemas": {},

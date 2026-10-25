@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import {
   Bell,
+  Collection,
   Calendar,
   Check,
+  Connection,
   DocumentChecked,
   FolderOpened,
   Grid,
@@ -11,78 +13,145 @@ import {
   Right,
   Sunny,
   SwitchButton,
+  User as UserIcon,
   WarningFilled,
-} from "@element-plus/icons-vue"
-import type { ThemePreference } from "~/composables/useTheme"
+} from "@element-plus/icons-vue";
+import type { ThemePreference } from "~/composables/useTheme";
 
-const route = useRoute()
-const { clear: clearUserSession, loggedIn, user } = useUserSession()
-const { capabilities } = usePortalAccess()
-const { preference, resolvedTheme, setTheme } = useTheme()
+const route = useRoute();
+const { clear: clearUserSession, loggedIn, user } = useUserSession();
+const { capabilities } = usePortalAccess();
+const { preference, resolvedTheme, setTheme } = useTheme();
 
-const systemThemeOption = { value: "system", label: "System", icon: Monitor } as const
+const systemThemeOption = {
+  value: "system",
+  label: "System",
+  icon: Monitor,
+} as const;
 const themeOptions = [
   systemThemeOption,
   { value: "light", label: "Light", icon: Sunny },
   { value: "dark", label: "Dark", icon: Moon },
-] satisfies Array<{ value: ThemePreference, label: string, icon: typeof Monitor }>
+] satisfies Array<{
+  value: ThemePreference;
+  label: string;
+  icon: typeof Monitor;
+}>;
 
-const activeTheme = computed(() => themeOptions.find((option) => option.value === preference.value) ?? systemThemeOption)
-const activeThemeIcon = computed(() => preference.value === "system"
-  ? (resolvedTheme.value === "dark" ? Moon : Sunny)
-  : activeTheme.value.icon)
+const activeTheme = computed(
+  () =>
+    themeOptions.find((option) => option.value === preference.value) ??
+    systemThemeOption,
+);
+const activeThemeIcon = computed(() =>
+  preference.value === "system"
+    ? resolvedTheme.value === "dark"
+      ? Moon
+      : Sunny
+    : activeTheme.value.icon,
+);
 
 function handleThemeCommand(command: ThemePreference) {
-  setTheme(command)
+  setTheme(command);
 }
 
 const navigation = computed(() => [
   { label: "Overview", path: "/", icon: Grid },
-  { label: "Projects", path: "/projects", icon: FolderOpened, enabled: capabilities.value.projectsRead, permission: "BiszPortal.Projects.read" },
-  { label: "Tasks", path: "/tasks", icon: DocumentChecked, enabled: capabilities.value.tasksRead, permission: "BiszPortal.Tasks.read" },
-  { label: "Incidents", path: "/incidents", icon: WarningFilled, enabled: capabilities.value.incidentsRead, permission: "BiszPortal.Incidents.read" },
-  { label: "Calendar", path: "/calendar", icon: Calendar, enabled: capabilities.value.calendarRead, permission: "BiszPortal.Calendar.read" },
-])
+  { label: "Assets", path: "/assets", icon: Collection },
+  {
+    label: "Projects",
+    path: "/projects",
+    icon: FolderOpened,
+    enabled: capabilities.value.projectsRead,
+    permission: "BiszPortal.Projects.read",
+  },
+  {
+    label: "Tasks",
+    path: "/tasks",
+    icon: DocumentChecked,
+    enabled: capabilities.value.tasksRead,
+    permission: "BiszPortal.Tasks.read",
+  },
+  {
+    label: "Incidents",
+    path: "/incidents",
+    icon: WarningFilled,
+    enabled: capabilities.value.incidentsRead,
+    permission: "BiszPortal.Incidents.read",
+  },
+  {
+    label: "Calendar",
+    path: "/calendar",
+    icon: Calendar,
+    enabled: capabilities.value.calendarRead,
+    permission: "BiszPortal.Calendar.read",
+  },
+  {
+    label: "Users",
+    path: "/users",
+    icon: UserIcon,
+    enabled: capabilities.value.usersRead,
+    permission: "BiszPortal.Users.read",
+  },
+  {
+    label: "Applications",
+    path: "/applications",
+    icon: Connection,
+    enabled: capabilities.value.applicationsRead,
+    permission: "BiszPortal.Applications.read",
+  },
+]);
 
 const pageTitle = computed(
-  () => navigation.value.find((item) => item.path === route.path)?.label ?? "Portal",
-)
+  () =>
+    navigation.value.find(
+      (item) =>
+        route.path === item.path || route.path.startsWith(`${item.path}/`),
+    )?.label ?? "Portal",
+);
 
 function navigate(item: (typeof navigation.value)[number]) {
-  if (item.enabled === false) return
-  navigateTo(item.path)
+  if (item.enabled === false) return;
+  navigateTo(item.path);
 }
 
-const accountName = computed(() => user.value?.name || (loggedIn.value ? "Basis user" : "Not signed in"))
-const accountImage = computed(() => user.value?.image?.trim() || undefined)
-const avatarFailed = ref(false)
-const loggingOut = ref(false)
+const accountName = computed(
+  () => user.value?.name || (loggedIn.value ? "Basis user" : "Not signed in"),
+);
+const accountImage = computed(() => user.value?.image?.trim() || undefined);
+const avatarFailed = ref(false);
+const loggingOut = ref(false);
 
 watch(accountImage, () => {
-  avatarFailed.value = false
-})
+  avatarFailed.value = false;
+});
 
 const accountInitials = computed(() => {
-  const source = user.value?.name || (loggedIn.value ? "Basis user" : "Guest")
-  const words = source.trim().split(/\s+/).filter(Boolean)
+  const source = user.value?.name || (loggedIn.value ? "Basis user" : "Guest");
+  const words = source.trim().split(/\s+/).filter(Boolean);
 
-  return (words.length > 1 ? `${words[0]?.[0]}${words.at(-1)?.[0]}` : source.slice(0, 2)).toUpperCase()
-})
+  return (
+    words.length > 1
+      ? `${words[0]?.[0]}${words.at(-1)?.[0]}`
+      : source.slice(0, 2)
+  ).toUpperCase();
+});
 
 async function signInWithDevConnect() {
-  await navigateTo("/api/auth/callback/basis-auth", { external: true })
+  await navigateTo("/api/auth/callback/basis-auth", { external: true });
 }
 
 async function logout() {
-  if (loggingOut.value) return
+  if (loggingOut.value) return;
 
-  loggingOut.value = true
+  loggingOut.value = true;
   try {
-    await clearUserSession()
-    await navigateTo("/")
-    await refreshNuxtData()
+    clearAllAssetsBrowserTokens();
+    await clearUserSession();
+    await navigateTo("/");
+    await refreshNuxtData();
   } finally {
-    loggingOut.value = false
+    loggingOut.value = false;
   }
 }
 </script>
@@ -90,15 +159,24 @@ async function logout() {
 <template>
   <el-container class="portal-shell">
     <el-aside class="portal-aside" width="220px">
-      <NuxtLink class="portal-brand" to="/" aria-label="Basis Portal">
-        <span class="portal-brand__mark">B</span>
-        <span>Basis Portal</span>
+      <NuxtLink class="portal-brand" to="/" aria-label="DevConnect">
+        <span>DevConnect</span>
       </NuxtLink>
 
       <el-menu class="portal-menu" :default-active="route.path">
-        <el-tooltip v-for="item in navigation" :key="item.path" :disabled="item.enabled !== false" :content="`Requires ${item.permission}`" placement="right">
+        <el-tooltip
+          v-for="item in navigation"
+          :key="item.path"
+          :disabled="item.enabled !== false"
+          :content="`Requires ${item.permission}`"
+          placement="right"
+        >
           <div>
-            <el-menu-item :index="item.path" :disabled="item.enabled === false" @click="navigate(item)">
+            <el-menu-item
+              :index="item.path"
+              :disabled="item.enabled === false"
+              @click="navigate(item)"
+            >
               <el-icon><component :is="item.icon" /></el-icon>
               <span class="menu-label">{{ item.label }}</span>
             </el-menu-item>
@@ -154,7 +232,11 @@ async function logout() {
         </el-breadcrumb>
         <div class="portal-actions">
           <el-dropdown trigger="click" @command="handleThemeCommand">
-            <el-button class="theme-switcher" text :aria-label="`Theme: ${activeTheme.label}`">
+            <el-button
+              class="theme-switcher"
+              text
+              :aria-label="`Theme: ${activeTheme.label}`"
+            >
               <el-icon><component :is="activeThemeIcon" /></el-icon>
               <span class="theme-switcher__label">{{ activeTheme.label }}</span>
             </el-button>
@@ -167,7 +249,11 @@ async function logout() {
                 >
                   <el-icon><component :is="option.icon" /></el-icon>
                   <span>{{ option.label }}</span>
-                  <el-icon v-if="preference === option.value" class="theme-option__check"><Check /></el-icon>
+                  <el-icon
+                    v-if="preference === option.value"
+                    class="theme-option__check"
+                    ><Check
+                  /></el-icon>
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>

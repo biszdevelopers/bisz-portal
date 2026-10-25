@@ -1,3 +1,4 @@
+@import "tailwindcss";
 @import "element-plus/dist/index.css";
 @import "element-plus/theme-chalk/dark/css-vars.css";
 
@@ -29,9 +30,23 @@
   --el-menu-hover-bg-color: var(--el-color-primary-light-9);
 }
 
+
+h1 {
+  font-size: 2em;
+}
+
+h2 {
+  font-size: 1.5em;
+}
+
+h3 {
+  font-size: 1.17em;
+}
+
 html.dark {
   color-scheme: dark;
 }
+
 
 * {
   box-sizing: border-box;

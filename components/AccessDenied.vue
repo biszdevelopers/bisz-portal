@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Lock } from "@element-plus/icons-vue"
+import { Lock } from "@element-plus/icons-vue";
 
-defineProps<{ title?: string, description: string }>()
+defineProps<{ title?: string; description: string }>();
 </script>
 
 <template>
@@ -13,9 +13,24 @@ defineProps<{ title?: string, description: string }>()
 </template>
 
 <style scoped>
-.access-denied { text-align: center; }
-.access-denied :deep(.el-card__body) { padding: 52px 24px; }
-.access-denied .el-icon { color: var(--el-text-color-secondary); }
-.access-denied h2 { margin: 14px 0 6px; font-size: 17px; }
-.access-denied p { max-width: 460px; margin: auto; color: var(--el-text-color-secondary); font-size: 13px; line-height: 1.6; }
+.access-denied {
+  text-align: center;
+}
+.access-denied :deep(.el-card__body) {
+  padding: 52px 24px;
+}
+.access-denied .el-icon {
+  color: var(--el-text-color-secondary);
+}
+.access-denied h2 {
+  margin: 14px 0 6px;
+  font-size: 17px;
+}
+.access-denied p {
+  max-width: 460px;
+  margin: auto;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
 </style>
