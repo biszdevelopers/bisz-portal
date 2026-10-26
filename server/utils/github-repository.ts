@@ -31,7 +31,7 @@ type GitHubRepository = {
 type GitHubReadme = {
   content: string;
   encoding: string;
-  download_url: string | null;
+  path: string;
   html_url: string;
 };
 
@@ -178,7 +178,7 @@ export async function fetchGitHubRepository(
     return githubError(error, "readme");
   }
 
-  if (readme.encoding !== "base64" || !readme.download_url) {
+  if (readme.encoding !== "base64" || !readme.path) {
     return new APIError(
       "repository_readme_unavailable",
       "The repository README could not be downloaded",
@@ -210,7 +210,7 @@ export async function fetchGitHubRepository(
       content: Buffer.from(readme.content.replace(/\s/g, ""), "base64").toString(
         "utf8",
       ),
-      url: readme.download_url,
+      url: readme.path.replace(/^\/+/, ""),
       editUrl: readme.html_url.replace("/blob/", "/edit/"),
     },
   };

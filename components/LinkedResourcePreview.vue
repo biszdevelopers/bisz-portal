@@ -56,7 +56,7 @@ watch(
   async ([content, fetchError]) => {
     previewError.value = fetchError
       ? "The linked file could not be loaded."
-      : !safeSourceUrl.value
+      : props.content === undefined && !safeSourceUrl.value
         ? "Only HTTPS resources can be previewed."
         : "";
     renderedHtml.value = "";
@@ -80,14 +80,16 @@ watch(
   <section class="linked-resource-preview">
     <header class="linked-resource-preview__header">
       <el-link
+        v-if="safeSourceUrl"
         class="linked-resource-preview__source"
-        :href="safeSourceUrl || undefined"
+        :href="safeSourceUrl"
         target="_blank"
         rel="noopener noreferrer"
         :underline="false"
       >
         {{ link }}
       </el-link>
+      <span v-else class="linked-resource-preview__source">{{ link }}</span>
       <el-link
         v-if="safeEditUrl"
         :href="safeEditUrl"
