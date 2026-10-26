@@ -11,7 +11,7 @@ import {
   type AccessTokenClaims,
 } from "~/server/utils/basis-schema";
 
-export const assetsAudience = "devconnect://assets.bisz.dev";
+export const assetsAudience = process.env.BASIS_ASSETS_AUDIENCE ?? "https://assets.devconnect.org";
 export const assetsScope = "assets.access";
 
 export class AssetsIdentityMismatchError extends Error {
