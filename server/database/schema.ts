@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
+  date,
   index,
   jsonb,
   pgEnum,
@@ -21,6 +23,14 @@ export const taskStatus = pgEnum("task_status", [
   "todo",
   "in_progress",
   "done",
+]);
+export const tagColor = pgEnum("tag_color", [
+  "blue",
+  "green",
+  "amber",
+  "red",
+  "gray",
+  "purple",
 ]);
 export const incidentSeverity = pgEnum("incident_severity", [
   "low",
@@ -50,6 +60,24 @@ export const portalAuthTokens = pgTable("portal_auth_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("portal_auth_tokens_user_id_idx").on(table.userId)]);
+
+export const tags = pgTable(
+  "tags",
+  {
+    name: text("name").primaryKey(),
+    color: tagColor("color").notNull(),
+    creatorId: uuid("creator_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "tags_name_format_check",
+      sql`char_length(${table.name}) between 1 and 64 and ${table.name} !~ '\\s' and ${table.name} = lower(${table.name})`,
+    ),
+  ],
+);
 
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -105,7 +133,7 @@ export const tasks = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     status: taskStatus("status").notNull().default("todo"),
-    dueDate: timestamp("due_date", { withTimezone: true }),
+    dueDate: date("due_date"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

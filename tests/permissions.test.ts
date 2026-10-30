@@ -10,7 +10,9 @@ import {
   applicationResourceSchema,
   applicationSettingsSchema,
   memberCreateSchema,
+  localDateOnly,
   projectCreateSchema,
+  taskCreateSchema,
   userListQuerySchema,
   userUpdateSchema,
 } from "../shared/contracts";
@@ -37,11 +39,15 @@ describe("portal and project authorization", () => {
     const capabilities = portalCapabilities([
       PortalPermissions.BiszPortal.Projects.read,
       PortalPermissions.BiszPortal.Tasks.read,
+      PortalPermissions.BiszPortal.Tags.read,
       PortalPermissions.BiszPortal.Users.read,
       PortalPermissions.BiszPortal.Users.update,
     ]);
     expect(capabilities.projectsRead).toBe(true);
     expect(capabilities.tasksRead).toBe(true);
+    expect(capabilities.tagsRead).toBe(true);
+    expect(capabilities.tagsCreate).toBe(false);
+    expect(capabilities.tagsDelete).toBe(false);
     expect(capabilities.usersRead).toBe(true);
     expect(capabilities.usersUpdate).toBe(true);
     expect(capabilities.projectsCreate).toBe(false);
@@ -61,6 +67,9 @@ describe("portal and project authorization", () => {
     expect(wildcard.applicationsCreate).toBe(true);
     expect(wildcard.applicationsDelete).toBe(true);
     expect(wildcard.applicationCredentialsManage).toBe(true);
+    expect(wildcard.tagsRead).toBe(true);
+    expect(wildcard.tagsCreate).toBe(true);
+    expect(wildcard.tagsDelete).toBe(true);
     expect(wildcard.usersRead).toBe(true);
     expect(wildcard.usersUpdate).toBe(true);
   });
@@ -109,6 +118,46 @@ describe("portal and project authorization", () => {
     expect(permitted.read).toBe(true);
     expect(permitted.readTasks).toBe(true);
     expect(permitted.manageMembers).toBe(false);
+  });
+
+  test("keeps task creation and updates independently permissioned", () => {
+    const member = {
+      role: "member" as const,
+      permissions: [
+        ProjectPermissions.projectRead,
+        ProjectPermissions.tasksWrite,
+      ],
+    };
+    const creator = projectCapabilities(
+      auth([
+        PortalPermissions.BiszPortal.Projects.read,
+        PortalPermissions.BiszPortal.Tasks.create,
+      ]),
+      member,
+    );
+    expect(creator.createTasks).toBe(true);
+    expect(creator.updateTasks).toBe(false);
+
+    const updater = projectCapabilities(
+      auth([
+        PortalPermissions.BiszPortal.Projects.read,
+        PortalPermissions.BiszPortal.Tasks.update,
+      ]),
+      member,
+    );
+    expect(updater.createTasks).toBe(false);
+    expect(updater.updateTasks).toBe(true);
+
+    const withoutLocalGrant = projectCapabilities(
+      auth([
+        PortalPermissions.BiszPortal.Projects.read,
+        PortalPermissions.BiszPortal.Tasks.create,
+        PortalPermissions.BiszPortal.Tasks.update,
+      ]),
+      { role: "member", permissions: [ProjectPermissions.projectRead] },
+    );
+    expect(withoutLocalGrant.createTasks).toBe(false);
+    expect(withoutLocalGrant.updateTasks).toBe(false);
   });
 });
 
@@ -179,6 +228,62 @@ describe("request validation", () => {
         slug: "Not Valid",
         description: "",
       }).success,
+    ).toBe(false);
+  });
+
+  test("validates task creation and date-only due dates", () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const futureDueDate = localDateOnly(tomorrow);
+
+    expect(
+      taskCreateSchema.parse({
+        title: "  Ship task flow  ",
+        description: "# Details",
+        dueDate: futureDueDate,
+      }),
+    ).toEqual({
+      title: "Ship task flow",
+      description: "# Details",
+      dueDate: futureDueDate,
+    });
+    expect(
+      taskCreateSchema.parse({ title: "No due date", dueDate: null }),
+    ).toEqual({ title: "No due date", description: "", dueDate: null });
+    expect(taskCreateSchema.safeParse({ title: "   " }).success).toBe(false);
+    expect(
+      taskCreateSchema.safeParse({
+        title: "Today is valid",
+        dueDate: localDateOnly(),
+      }).success,
+    ).toBe(true);
+    expect(
+      taskCreateSchema.safeParse({
+        title: "Past date",
+        dueDate: localDateOnly(yesterday),
+      }).success,
+    ).toBe(false);
+    expect(
+      taskCreateSchema.safeParse({ title: "Task", dueDate: "2027-02-29" })
+        .success,
+    ).toBe(false);
+    expect(
+      taskCreateSchema.safeParse({
+        title: "Task",
+        dueDate: "2028-02-29T10:00:00Z",
+      }).success,
+    ).toBe(false);
+    expect(
+      taskCreateSchema.safeParse({
+        title: "Task",
+        description: "x".repeat(50_001),
+      }).success,
+    ).toBe(false);
+    expect(
+      taskCreateSchema.safeParse({ title: "Task", projectId: crypto.randomUUID() })
+        .success,
     ).toBe(false);
   });
 

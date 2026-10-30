@@ -36,6 +36,20 @@
       "when": 1792848050279,
       "tag": "0004_faithful_luke_cage",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793025780982,
+      "tag": "0005_task-due-date",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793199405723,
+      "tag": "0006_thankful_malice",
+      "breakpoints": true
     }
   ]
 }

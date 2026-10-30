@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 import { apiResult } from "~/server/utils/api-response";
 import {
   requirePortalPermission,
@@ -16,6 +17,12 @@ export default defineEventHandler(async (event) => {
   );
   if (auth instanceof APIError) return apiResult(event, auth);
   const taskId = getRouterParam(event, "taskId") ?? "";
+  if (!z.string().uuid().safeParse(taskId).success) {
+    return apiResult(
+      event,
+      new APIError("not_found", "Task not found", 404, "not_found"),
+    );
+  }
   const [row] = await useDatabase()
     .select({ task: tasks, projectName: projects.name })
     .from(tasks)
@@ -47,7 +54,7 @@ export default defineEventHandler(async (event) => {
         title: row.task.title,
         description: row.task.description,
         status: row.task.status,
-        dueDate: row.task.dueDate?.toISOString() ?? null,
+        dueDate: row.task.dueDate,
         createdAt: row.task.createdAt.toISOString(),
         updatedAt: row.task.updatedAt.toISOString(),
       },

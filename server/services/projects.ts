@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "~/server/utils/api-auth";
 import { useDatabase } from "~/server/database/client";
 import { projectMembers, projects, tasks } from "~/server/database/schema";
@@ -107,11 +107,14 @@ export async function getProjectDetail(
   );
   if (!summary) return null;
   const db = useDatabase();
-  const taskRows = await db
-    .select({ task: tasks, projectName: projects.name })
-    .from(tasks)
-    .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(eq(tasks.projectId, projectId));
+  const taskRows = summary.capabilities.readTasks
+    ? await db
+        .select({ task: tasks, projectName: projects.name })
+        .from(tasks)
+        .innerJoin(projects, eq(tasks.projectId, projects.id))
+        .where(eq(tasks.projectId, projectId))
+        .orderBy(desc(tasks.createdAt))
+    : [];
   const linkedTasks: TaskView[] = taskRows.map(({ task, projectName }) => ({
     id: task.id,
     projectId: task.projectId,
@@ -119,7 +122,7 @@ export async function getProjectDetail(
     title: task.title,
     description: task.description,
     status: task.status,
-    dueDate: task.dueDate ? iso(task.dueDate) : null,
+    dueDate: task.dueDate,
     createdAt: iso(task.createdAt),
     updatedAt: iso(task.updatedAt),
   }));

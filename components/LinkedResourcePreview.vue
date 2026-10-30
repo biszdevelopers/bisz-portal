@@ -1,8 +1,4 @@
 <script setup lang="ts">
-import { remark } from "remark";
-import remarkGfm from "remark-gfm";
-import remarkHtml from "remark-html";
-
 const props = defineProps<{
   link: string;
   editLink?: string;
@@ -63,11 +59,7 @@ watch(
     if (props.fileType !== "markdown" || !content || fetchError) return;
 
     try {
-      const rendered = await remark()
-        .use(remarkGfm)
-        .use(remarkHtml, { sanitize: true })
-        .process(content);
-      renderedHtml.value = String(rendered);
+      renderedHtml.value = await renderMarkdown(content);
     } catch {
       previewError.value = "The linked file could not be rendered.";
     }

@@ -5,6 +5,13 @@ import {
   type ProjectPermission,
 } from "~/shared/permissions";
 
+export function localDateOnly(value = new Date()) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export const projectCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   slug: z
@@ -26,6 +33,68 @@ export const projectUpdateSchema = z.object({
     .max(120),
   description: z.string().max(50_000),
 });
+
+export const taskCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    description: z.string().max(50_000).default(""),
+    dueDate: z
+      .iso.date()
+      .nullable()
+      .default(null)
+      .refine(
+        (value) => value === null || value >= localDateOnly(),
+        "Due date cannot be in the past",
+      ),
+  })
+  .strict();
+
+export const tagColorSchema = z.enum([
+  "blue",
+  "green",
+  "amber",
+  "red",
+  "gray",
+  "purple",
+]);
+
+export type TagColor = z.infer<typeof tagColorSchema>;
+
+export function normalizeTagName(value: string) {
+  return value.normalize("NFKC").trim().toLowerCase();
+}
+
+export const tagNameSchema = z
+  .string()
+  .transform(normalizeTagName)
+  .pipe(
+    z
+      .string()
+      .min(1, "Tag name is required")
+      .max(64, "Tag name cannot exceed 64 characters")
+      .refine((value) => !/\s/u.test(value), "Tag names cannot contain whitespace"),
+  );
+
+const tagNameListSchema = z.preprocess(
+  (value) => (Array.isArray(value) ? value : [value]),
+  z.array(tagNameSchema).min(1).max(100),
+);
+
+export const tagQuerySchema = z.union([
+  z.object({ q: tagNameSchema, name: z.never().optional() }).strict(),
+  z.object({ name: tagNameListSchema, q: z.never().optional() }).strict(),
+]);
+
+export const tagCreateSchema = z
+  .object({ name: tagNameSchema, color: tagColorSchema })
+  .strict();
+
+export const tagDeleteSchema = z.object({ name: tagNameSchema }).strict();
+
+export type TagView = {
+  name: string;
+  color: TagColor;
+};
 
 export const repositoryValidationSchema = z
   .object({

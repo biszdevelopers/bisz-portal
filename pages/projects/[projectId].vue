@@ -3,12 +3,14 @@ import {
   CircleCheckFilled,
   CircleCloseFilled,
   Loading,
+  Plus,
 } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
-import type {
-  ProjectSummary,
-  RepositoryValidationResult,
-  TaskView,
+import { ElMessage, type FormInstance, type FormRules } from "element-plus";
+import {
+  localDateOnly,
+  type ProjectSummary,
+  type RepositoryValidationResult,
+  type TaskView,
 } from "~/shared/contracts";
 
 type ProjectDetail = ProjectSummary & { tasks: TaskView[] };
@@ -28,7 +30,31 @@ const requestError = shallowRef<unknown>(null);
 const activeTab = ref("overview");
 const saving = ref(false);
 const savingGithub = ref(false);
+const taskDialogOpen = ref(false);
+const creatingTask = ref(false);
+const taskFormRef = ref<FormInstance>();
 const form = reactive({ name: "", slug: "", description: "" });
+const taskForm = reactive({ title: "", description: "", dueDate: null as string | null });
+
+function validateTaskDueDate(
+  _rule: unknown,
+  value: string | null,
+  callback: (error?: Error) => void,
+) {
+  if (value && value < localDateOnly()) {
+    callback(new Error("Due date cannot be in the past"));
+    return;
+  }
+  callback();
+}
+
+const taskRules: FormRules<typeof taskForm> = {
+  title: [
+    { required: true, whitespace: true, message: "Enter a task title", trigger: "blur" },
+    { max: 120, message: "Use 120 characters or fewer", trigger: "blur" },
+  ],
+  dueDate: [{ validator: validateTaskDueDate, trigger: "change" }],
+};
 const githubForm = reactive({
   repositoryUrl: project.value?.githubRepository ?? "",
   defaultBranch: "main",
@@ -55,9 +81,63 @@ const canSaveGithub = computed(
       project.value?.githubRepository &&
     !savingGithub.value,
 );
+const canCreateTask = computed(
+  () =>
+    Boolean(project.value?.capabilities.createTasks) &&
+    project.value?.status === "active",
+);
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
+}
+
+function disablePastDueDates(value: Date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return value.getTime() < today.getTime();
+}
+
+function openTaskDialog() {
+  if (!canCreateTask.value) return;
+  taskDialogOpen.value = true;
+}
+
+function resetTaskForm() {
+  taskForm.title = "";
+  taskForm.description = "";
+  taskForm.dueDate = null;
+  taskFormRef.value?.clearValidate();
+}
+
+async function createTask() {
+  if (!project.value || !canCreateTask.value || creatingTask.value) return;
+  const valid = await taskFormRef.value?.validate().catch(() => false);
+  if (!valid) return;
+
+  creatingTask.value = true;
+  try {
+    const response = await $fetch<{ task: TaskView }>(
+      `/api/projects/${encodeURIComponent(projectId.value)}/tasks`,
+      {
+        method: "POST",
+        body: {
+          title: taskForm.title,
+          description: taskForm.description,
+          dueDate: taskForm.dueDate,
+        },
+      },
+    );
+    project.value.tasks.unshift(response.task);
+    project.value.taskCount += 1;
+    requestError.value = null;
+    taskDialogOpen.value = false;
+    ElMessage.success("Task created");
+  } catch (caught) {
+    requestError.value = caught;
+    ElMessage.error(backendErrorMessage(caught, "The task could not be created."));
+  } finally {
+    creatingTask.value = false;
+  }
 }
 
 function openEdit() {
@@ -304,6 +384,41 @@ async function saveProject() {
           </template>
         </div>
       </el-tab-pane>
+      <el-tab-pane label="Tasks" name="tasks">
+        <div class="tasks-tab">
+          <header class="tasks-tab__header">
+            <div>
+              <h2>Tasks</h2>
+              <p>Work tracked for this project.</p>
+            </div>
+            <el-button
+              v-if="canCreateTask"
+              type="primary"
+              :icon="Plus"
+              @click="openTaskDialog"
+            >
+              Create task
+            </el-button>
+          </header>
+
+          <AccessDenied
+            v-if="!project?.capabilities.readTasks"
+            description="You need task read access for this project to view its tasks."
+          />
+          <div v-else-if="project?.tasks.length" class="task-list">
+            <TaskCard
+              v-for="task in project.tasks"
+              :key="task.id"
+              :task="task"
+            />
+          </div>
+          <el-empty
+            v-else
+            :image-size="84"
+            description="No tasks have been created for this project."
+          />
+        </div>
+      </el-tab-pane>
       <el-tab-pane
         label="Settings"
         name="settings"
@@ -430,6 +545,62 @@ async function saveProject() {
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <el-dialog
+      v-model="taskDialogOpen"
+      class="task-dialog"
+      title="Create task"
+      width="min(920px, calc(100vw - 32px))"
+      destroy-on-close
+      :close-on-click-modal="!creatingTask"
+      :close-on-press-escape="!creatingTask"
+      :show-close="!creatingTask"
+      @closed="resetTaskForm"
+    >
+      <el-form
+        ref="taskFormRef"
+        :model="taskForm"
+        :rules="taskRules"
+        label-position="top"
+        @submit.prevent="createTask"
+      >
+        <el-form-item label="Project">
+          <el-input :model-value="project?.name ?? ''" disabled />
+        </el-form-item>
+        <el-form-item label="Title" prop="title">
+          <el-input
+            v-model="taskForm.title"
+            placeholder="Refactor the authentication module"
+            maxlength="120"
+            show-word-limit
+            autofocus
+          />
+          <span class="text-(--el-text-color-secondary)">Good titles have subject and action well-defined. See <el-link underline="never" href="https://bisz.dev/TaskTitleNaming" target="_blank">task title naming convention</el-link>.</span>
+        </el-form-item>
+        <el-form-item label="Description" prop="description">
+          <MarkdownEditor v-model="taskForm.description" :maxlength="50_000" />
+        </el-form-item>
+        <el-form-item label="Due date" prop="dueDate">
+          <el-date-picker
+            v-model="taskForm.dueDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :disabled-date="disablePastDueDates"
+            placeholder="No due date"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button :disabled="creatingTask" @click="taskDialogOpen = false">
+          Cancel
+        </el-button>
+        <el-button type="primary" :loading="creatingTask" @click="createTask">
+          Create task
+        </el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -464,6 +635,50 @@ pre {
 .repository-overview {
   min-height: 180px;
   padding-top: 8px;
+}
+
+.tasks-tab {
+  padding-top: 8px;
+}
+
+.tasks-tab__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.tasks-tab__header h2,
+.tasks-tab__header p {
+  margin: 0;
+}
+
+.tasks-tab__header p {
+  margin-top: 5px;
+  color: var(--el-text-color-secondary);
+}
+
+.task-list {
+  display: grid;
+  gap: 8px;
+}
+
+:deep(.el-dialog .el-date-editor.el-input) {
+  width: 100%;
+}
+
+:deep(.task-dialog) {
+  display: flex;
+  max-height: calc(100vh - 32px);
+  flex-direction: column;
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+:deep(.task-dialog .el-dialog__body) {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .repository-overview-header {
@@ -541,6 +756,11 @@ pre {
 
 @media (max-width: 700px) {
   .project-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tasks-tab__header {
     align-items: stretch;
     flex-direction: column;
   }

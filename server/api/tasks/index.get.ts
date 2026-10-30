@@ -54,7 +54,7 @@ export default defineEventHandler(async (event) => {
     title: task.title,
     description: task.description,
     status: task.status,
-    dueDate: task.dueDate?.toISOString() ?? null,
+    dueDate: task.dueDate,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
   }));

@@ -37,6 +37,9 @@ export function portalCapabilities(
     tasksRead: has(PortalPermissions.BiszPortal.Tasks.read),
     tasksCreate: has(PortalPermissions.BiszPortal.Tasks.create),
     tasksUpdate: has(PortalPermissions.BiszPortal.Tasks.update),
+    tagsRead: has(PortalPermissions.BiszPortal.Tags.read),
+    tagsCreate: has(PortalPermissions.BiszPortal.Tags.create),
+    tagsDelete: has(PortalPermissions.BiszPortal.Tags.delete),
     incidentsRead: has(PortalPermissions.BiszPortal.Incidents.read),
     incidentsCreate: has(PortalPermissions.BiszPortal.Incidents.create),
     incidentsUpdate: has(PortalPermissions.BiszPortal.Incidents.update),
@@ -109,10 +112,10 @@ export function projectCapabilities(
     manageMembers:
       global.projectMembersManage && local(ProjectPermissions.membersManage),
     readTasks: global.tasksRead && local(ProjectPermissions.tasksRead),
-    writeTasks:
-      global.tasksCreate &&
-      global.tasksUpdate &&
-      local(ProjectPermissions.tasksWrite),
+    createTasks:
+      global.tasksCreate && local(ProjectPermissions.tasksWrite),
+    updateTasks:
+      global.tasksUpdate && local(ProjectPermissions.tasksWrite),
     readIncidents:
       global.incidentsRead && local(ProjectPermissions.incidentsRead),
     writeIncidents:
