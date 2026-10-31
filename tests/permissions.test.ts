@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  assetsCapabilities,
   projectCapabilities,
   portalCapabilities,
 } from "../server/utils/authorization";
@@ -16,7 +17,12 @@ import {
   userListQuerySchema,
   userUpdateSchema,
 } from "../shared/contracts";
-import { PortalPermissions, ProjectPermissions } from "../shared/permissions";
+import {
+  AssetsPermissions,
+  PortalPermissions,
+  ProjectPermissions,
+  projectCreationAssetPermissionValues,
+} from "../shared/permissions";
 import type { AuthenticatedRequest } from "../server/utils/api-auth";
 
 function auth(permissions: string[]): AuthenticatedRequest {
@@ -35,6 +41,20 @@ function auth(permissions: string[]): AuthenticatedRequest {
 }
 
 describe("portal and project authorization", () => {
+  test("requires project and object creation for VFS-backed allocation", () => {
+    expect(projectCreationAssetPermissionValues).toEqual([
+      AssetsPermissions.Assets.Assets.create,
+      AssetsPermissions.Assets.Projects.create,
+    ]);
+    expect(
+      assetsCapabilities([AssetsPermissions.Assets.Projects.create]),
+    ).toEqual({ assetsCreate: false, projectsCreate: true });
+    expect(assetsCapabilities(["Assets.all"]).projectsCreate).toBe(true);
+    const objectOnly = assetsCapabilities([AssetsPermissions.Assets.Assets.create]);
+    expect(objectOnly.assetsCreate).toBe(true);
+    expect(objectOnly.projectsCreate).toBe(false);
+  });
+
   test("maps Basis permissions into client capabilities", () => {
     const capabilities = portalCapabilities([
       PortalPermissions.BiszPortal.Projects.read,

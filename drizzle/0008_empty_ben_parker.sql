@@ -1,0 +1,2 @@
+ALTER TABLE "projects" ADD COLUMN "assets_manifest_object_id" text;--> statement-breakpoint
+ALTER TABLE "projects" ADD CONSTRAINT "projects_assets_manifest_object_id_unique" UNIQUE("assets_manifest_object_id");

@@ -44,8 +44,8 @@ const assetPermissionsDescription = computed(() => {
   if (assetsPermissionsError.value)
     return "Could not verify your Assets permissions. Reload the page to try again.";
   if (!assetsConnection.value?.connected)
-    return "Connect to DevConnect Assets to verify Assets.Assets.create and Assets.Projects.create.";
-  return `Project creation requires Assets.Assets.create and Assets.Projects.create. Missing: ${missingAssetPermissions.value.join(", ")}`;
+    return "Connect to DevConnect Assets to verify Assets.Projects.create and Assets.Assets.create.";
+  return `Project creation requires Assets.Projects.create and Assets.Assets.create. Missing: ${missingAssetPermissions.value.join(", ")}`;
 });
 
 const slugPreview = computed(

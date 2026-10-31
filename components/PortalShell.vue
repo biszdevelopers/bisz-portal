@@ -5,6 +5,7 @@ import {
   Calendar,
   Check,
   Connection,
+  DataAnalysis,
   DocumentChecked,
   FolderOpened,
   Grid,
@@ -58,6 +59,7 @@ function handleThemeCommand(command: ThemePreference) {
 const navigation = computed(() => [
   { label: "Overview", path: "/", icon: Grid },
   { label: "Assets", path: "/assets", icon: Collection },
+  { label: "Tests", path: "/tests", icon: DataAnalysis },
   {
     label: "Projects",
     path: "/projects",

@@ -14,6 +14,14 @@ key and keep it stable: changing it invalidates stored Assets connections.
 `NUXT_PUBLIC_BISZ_ASSETS_API_URL` must be reachable from users' browsers for
 public reads and direct uploads.
 
+Portal project creation uses the private `BISZ_ASSETS_API_URL` from the Nitro
+server to create an Assets project on behalf of the signed-in user. This requires
+`Assets.Projects.create` and `Assets.Assets.create` on the user's Assets token.
+The server then creates an `@basis/assets-vfs` root manifest and stores its
+object ID beside the Assets project UID. Project settings link back to
+`/assets?projectUid=...`, which initializes the Assets page with that project
+selected as its filter.
+
 The portal checks that the Assets ID-token subject matches the signed-in portal
 user and refuses the authorization-code login when they differ. It validates the
 Assets access token's signature, issuer, audience, client,

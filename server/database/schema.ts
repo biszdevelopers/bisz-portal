@@ -85,6 +85,8 @@ export const projects = pgTable("projects", {
   slug: text("slug").notNull().unique(),
   description: text("description").notNull().default(""),
   githubRepository: text("github_repository"),
+  assetsProjectUid: text("assets_project_uid").unique(),
+  assetsManifestObjectId: text("assets_manifest_object_id").unique(),
   status: projectStatus("status").notNull().default("active"),
   creatorId: uuid("creator_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })

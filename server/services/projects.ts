@@ -86,6 +86,8 @@ export async function listProjectSummaries(
     slug: project.slug,
     description: project.description,
     githubRepository: project.githubRepository,
+    assetsProjectUid: project.assetsProjectUid,
+    assetsManifestObjectId: project.assetsManifestObjectId,
     status: project.status,
     creatorId: project.creatorId,
     createdAt: iso(project.createdAt),

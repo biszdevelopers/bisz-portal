@@ -8,6 +8,8 @@ import {
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import {
   localDateOnly,
+  type ProjectDirectoryView,
+  type ProjectAssetsLinkView,
   type ProjectSummary,
   type RepositoryValidationResult,
   type TaskView,
@@ -19,10 +21,19 @@ type RepositoryUpdateResponse = RepositoryValidationResult & {
 };
 
 const route = useRoute();
+const runtimeConfig = useRuntimeConfig();
 const projectId = computed(() => String(route.params.projectId ?? ""));
 const headers = import.meta.server ? useRequestHeaders(["cookie"]) : undefined;
 const { data, pending, error } = await useFetch<{ project: ProjectDetail }>(
   () => `/api/projects/${encodeURIComponent(projectId.value)}`,
+  { headers },
+);
+const {
+  data: assetsLinkData,
+  pending: assetsLinkPending,
+  error: assetsLinkError,
+} = await useFetch<{ assets: ProjectAssetsLinkView }>(
+  () => `/api/projects/${encodeURIComponent(projectId.value)}/assets`,
   { headers },
 );
 const project = computed(() => data.value?.project);
@@ -30,8 +41,13 @@ const requestError = shallowRef<unknown>(null);
 const activeTab = ref("overview");
 const saving = ref(false);
 const savingGithub = ref(false);
+const repairingAssetsLink = ref(false);
 const taskDialogOpen = ref(false);
 const creatingTask = ref(false);
+const filesLoading = ref(false);
+const filesLoaded = ref(false);
+const filesError = shallowRef<unknown>(null);
+const filesDirectory = ref<ProjectDirectoryView>({ path: "/", entries: [] });
 const taskFormRef = ref<FormInstance>();
 const form = reactive({ name: "", slug: "", description: "" });
 const taskForm = reactive({ title: "", description: "", dueDate: null as string | null });
@@ -81,11 +97,69 @@ const canSaveGithub = computed(
       project.value?.githubRepository &&
     !savingGithub.value,
 );
+const canEditProjectSettings = computed(
+  () =>
+    Boolean(project.value?.capabilities.update) &&
+    project.value?.status === "active",
+);
+const assetsLink = computed<ProjectAssetsLinkView>(() => {
+  if (assetsLinkData.value?.assets) return assetsLinkData.value.assets;
+  return {
+    uid: project.value?.assetsProjectUid ?? null,
+    manifestObjectId: project.value?.assetsManifestObjectId ?? null,
+    status: assetsLinkError.value
+      ? "unavailable"
+      : project.value?.assetsProjectUid
+        ? "unavailable"
+        : "unlinked",
+  };
+});
+const canRepairAssetsLink = computed(
+  () =>
+    canEditProjectSettings.value &&
+    (assetsLink.value.status === "unlinked" ||
+      assetsLink.value.status === "missing") &&
+    !repairingAssetsLink.value,
+);
+const assetsStatusType = computed(() => {
+  switch (assetsLink.value.status) {
+    case "linked":
+      return "success";
+    case "missing":
+      return "danger";
+    case "unavailable":
+      return "warning";
+    default:
+      return "info";
+  }
+});
 const canCreateTask = computed(
   () =>
     Boolean(project.value?.capabilities.createTasks) &&
     project.value?.status === "active",
 );
+
+async function loadFilesDirectory(path: string) {
+  if (filesLoading.value) return;
+  filesLoading.value = true;
+  try {
+    const response = await $fetch<{ directory: ProjectDirectoryView }>(
+      `/api/projects/${encodeURIComponent(projectId.value)}/files`,
+      { query: { path } },
+    );
+    filesDirectory.value = response.directory;
+    filesError.value = null;
+    filesLoaded.value = true;
+  } catch (caught) {
+    filesError.value = caught;
+  } finally {
+    filesLoading.value = false;
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === "files" && !filesLoaded.value) void loadFilesDirectory("/");
+});
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
@@ -296,6 +370,31 @@ async function saveProject() {
     saving.value = false;
   }
 }
+
+async function repairAssetsLink() {
+  if (!canRepairAssetsLink.value) return;
+  repairingAssetsLink.value = true;
+  try {
+    const response = await $fetch<{
+      assets: ProjectAssetsLinkView;
+      project: ProjectDetail;
+    }>(
+      `/api/projects/${encodeURIComponent(projectId.value)}/assets/repair`,
+      { method: "POST" },
+    );
+    assetsLinkData.value = { assets: response.assets };
+    data.value = { project: response.project };
+    requestError.value = null;
+    ElMessage.success("Assets storage link repaired");
+  } catch (caught) {
+    requestError.value = caught;
+    ElMessage.error(
+      backendErrorMessage(caught, "The Assets storage link could not be repaired."),
+    );
+  } finally {
+    repairingAssetsLink.value = false;
+  }
+}
 </script>
 
 <template>
@@ -384,6 +483,40 @@ async function saveProject() {
           </template>
         </div>
       </el-tab-pane>
+      <el-tab-pane label="Files" name="files">
+        <div class="files-tab">
+          <header class="files-tab__header">
+            <div>
+              <h2>Files</h2>
+              <p>Browse this project's Assets virtual file system.</p>
+            </div>
+            
+          </header>
+          
+          <BackendErrorDetails v-if="filesError" :error="filesError" />
+          
+          <el-card>
+            <strong class="bold">About operations on file system</strong>
+            <p>You can only see the directory of this project's virtural file system here. To edit files, you can connect via SSH.</p>
+            <p>To connect to this project's virtual file system, do the following:</p>
+            <p class="font-mono my-2" v-if="assetsLink.manifestObjectId">ssh {{ assetsLink.manifestObjectId }}@vfs.bisz.dev</p>
+            <p>Or uploading and downloading something like this:</p>
+            <p class="font-mono my-2" v-if="assetsLink.manifestObjectId">scp {{ assetsLink.manifestObjectId }}@vfs.bisz.dev:/path/to/file ./local/path</p>
+            <p>You will be prompted to log in via DevConnect</p>
+            <p>For more, see here <el-link href="https://bisz.dev/VFS" target="_blank" underline="never">about VFS SSH</el-link></p>
+          </el-card>
+
+          <br>
+          <FileBrowser
+            :path="filesDirectory.path"
+            :entries="filesDirectory.entries"
+            :loading="filesLoading"
+            :root-label="project?.name ?? 'Files'"
+            :object-base-url="runtimeConfig.public.assetsApiUrl"
+            @navigate="loadFilesDirectory"
+          />
+        </div>
+      </el-tab-pane>
       <el-tab-pane label="Tasks" name="tasks">
         <div class="tasks-tab">
           <header class="tasks-tab__header">
@@ -422,22 +555,108 @@ async function saveProject() {
       <el-tab-pane
         label="Settings"
         name="settings"
-        :disabled="
-          !project?.capabilities.update || project.status === 'archived'
-        "
       >
         <div class="settings-layout">
           <aside aria-label="Settings sections">
 
             <el-anchor :offset="24">
-              <el-anchor-link href="#project-settings-general" title="General" />
-              <el-anchor-link href="#project-settings-github" title="GitHub" />
+              <el-anchor-link href="#project-settings-assets" title="Assets storage" />
+              <el-anchor-link
+                v-if="canEditProjectSettings"
+                href="#project-settings-general"
+                title="General"
+              />
+              <el-anchor-link
+                v-if="canEditProjectSettings"
+                href="#project-settings-github"
+                title="GitHub"
+              />
             </el-anchor>
 
           </aside>
 
           <div class="settings-content">
-            <section id="project-settings-general" class="settings-section">
+            <section id="project-settings-assets" class="settings-section">
+              <h2>Assets storage</h2>
+              <p>
+                This project uses Assets as web storage for essential files.
+                Files and Assets project metadata are managed from the Assets
+                page or its API.
+              </p>
+              <el-divider />
+
+              <div v-loading="assetsLinkPending" class="assets-link-settings">
+                <el-descriptions :column="1" border>
+                  <el-descriptions-item label="Status">
+                    <el-tag :type="assetsStatusType">
+                      {{ assetsLink.status }}
+                    </el-tag>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Assets project UID">
+                    <pre v-if="assetsLink.uid">{{ assetsLink.uid }}</pre>
+                    <span v-else>Not allocated</span>
+                  </el-descriptions-item>
+                  <el-descriptions-item label="VFS root manifest object ID">
+                    <pre v-if="assetsLink.manifestObjectId">{{ assetsLink.manifestObjectId }}</pre>
+                    <span v-else>Not allocated</span>
+                  </el-descriptions-item>
+                </el-descriptions>
+
+                <el-alert
+                  v-if="assetsLink.status === 'missing'"
+                  title="The linked Assets project no longer exists"
+                  description="An editor can allocate a replacement Assets project. The old link will be replaced only after allocation succeeds."
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                />
+                <el-alert
+                  v-else-if="assetsLink.status === 'unavailable'"
+                  title="Assets link could not be verified"
+                  description="Repair is disabled until the Assets service can confirm whether the linked project exists."
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                />
+                <el-alert
+                  v-else-if="assetsLink.status === 'unlinked'"
+                  title="No Assets project is linked"
+                  description="This is expected for legacy portal projects. An editor can allocate an Assets project now."
+                  type="info"
+                  :closable="false"
+                  show-icon
+                />
+
+                <div class="assets-link-actions">
+                  <el-button
+                    v-if="assetsLink.uid && assetsLink.status === 'linked'"
+                    tag="a"
+                    :href="`/assets?projectUid=${encodeURIComponent(assetsLink.uid)}`"
+                  >
+                    Open in Assets
+                  </el-button>
+                  <el-button
+                    v-if="
+                      canEditProjectSettings &&
+                      (assetsLink.status === 'unlinked' ||
+                        assetsLink.status === 'missing')
+                    "
+                    type="primary"
+                    :disabled="!canRepairAssetsLink"
+                    :loading="repairingAssetsLink"
+                    @click="repairAssetsLink"
+                  >
+                    Repair Assets link
+                  </el-button>
+                </div>
+              </div>
+            </section>
+
+            <section
+              v-if="canEditProjectSettings"
+              id="project-settings-general"
+              class="settings-section"
+            >
               <h2>General</h2>
               <p>Update the project's name, URL slug, and description.</p>
               <el-divider />
@@ -473,7 +692,11 @@ async function saveProject() {
               </el-form>
             </section>
 
-            <section id="project-settings-github" class="settings-section">
+            <section
+              v-if="canEditProjectSettings"
+              id="project-settings-github"
+              class="settings-section"
+            >
               <h2>GitHub</h2>
               <p>Configure GitHub integration</p>
               <el-divider />
@@ -637,11 +860,13 @@ pre {
   padding-top: 8px;
 }
 
-.tasks-tab {
+.tasks-tab,
+.files-tab {
   padding-top: 8px;
 }
 
-.tasks-tab__header {
+.tasks-tab__header,
+.files-tab__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -650,11 +875,14 @@ pre {
 }
 
 .tasks-tab__header h2,
-.tasks-tab__header p {
+.tasks-tab__header p,
+.files-tab__header h2,
+.files-tab__header p {
   margin: 0;
 }
 
-.tasks-tab__header p {
+.tasks-tab__header p,
+.files-tab__header p {
   margin-top: 5px;
   color: var(--el-text-color-secondary);
 }
@@ -734,6 +962,21 @@ pre {
 
 .settings-section :deep(.el-divider) {
   margin: 18px 0 24px;
+}
+
+.assets-link-settings {
+  min-height: 120px;
+}
+
+.assets-link-settings .el-alert {
+  margin-top: 16px;
+}
+
+.assets-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .repository-status-icon.is-success,

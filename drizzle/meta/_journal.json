@@ -50,6 +50,20 @@
       "when": 1793199405723,
       "tag": "0006_thankful_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793425065086,
+      "tag": "0007_long_argent",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793437355341,
+      "tag": "0008_empty_ben_parker",
+      "breakpoints": true
     }
   ]
 }

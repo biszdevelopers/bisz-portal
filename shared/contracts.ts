@@ -155,6 +155,8 @@ export type ProjectSummary = {
   slug: string;
   description: string;
   githubRepository: string | null;
+  assetsProjectUid: string | null;
+  assetsManifestObjectId: string | null;
   status: "active" | "archived";
   creatorId: string;
   createdAt: string;
@@ -164,6 +166,29 @@ export type ProjectSummary = {
   completedTaskCount: number;
   members: ProjectMemberView[];
   capabilities: ProjectCapabilities;
+};
+
+export type ProjectAssetsLinkStatus =
+  | "linked"
+  | "unlinked"
+  | "missing"
+  | "unavailable";
+
+export type ProjectAssetsLinkView = {
+  uid: string | null;
+  manifestObjectId: string | null;
+  status: ProjectAssetsLinkStatus;
+};
+
+export type ProjectFileEntry = {
+  name: string;
+  type: "directory" | "file";
+  objectId: string;
+};
+
+export type ProjectDirectoryView = {
+  path: string;
+  entries: ProjectFileEntry[];
 };
 
 export type ProjectMemberView = {

@@ -37,7 +37,12 @@ const route = useRoute();
 const activeTab = ref("assets");
 const page = ref(1);
 const pageSize = 20;
-const projectFilter = ref("");
+const requestedProjectUid = Array.isArray(route.query.projectUid)
+  ? route.query.projectUid[0]
+  : route.query.projectUid;
+const projectFilter = ref(
+  typeof requestedProjectUid === "string" ? requestedProjectUid : "",
+);
 const requestError = shallowRef<unknown>(null);
 const busy = ref(false);
 const disconnecting = ref(false);
@@ -52,6 +57,7 @@ const uploadDialog = ref(false);
 const uploadProjectUid = ref("");
 const uploadObjectId = ref("");
 const uploadFiles = ref<File[]>([]);
+const uploadProgress = ref<number | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const assetBase = computed(() => config.public.assetsApiUrl.replace(/\/$/, ""));
 const connection = ref<Connection>({ portalSignedIn: false, connected: false, userId: null });
@@ -148,6 +154,54 @@ async function assetsFetch<T>(path: string, options: {
     throw new Error(payload.error_description || payload.message || `Assets API returned ${response.status}`);
   }
   return response.status === 204 ? {} as T : await response.json() as T;
+}
+
+async function uploadFormData<T>(
+  path: string,
+  body: FormData,
+  sessionToken: string,
+  retry = true,
+): Promise<T> {
+  const token = await acquireToken();
+  if (!token) throw new Error("Connect to DevConnect Assets first.");
+
+  const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${assetBase.value}${path}`);
+    request.setRequestHeader("Authorization", `Bearer ${token}`);
+    request.setRequestHeader("X-Upload-Session-Token", sessionToken);
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        uploadProgress.value = Math.min(100, Math.round((event.loaded / event.total) * 100));
+      }
+    });
+    request.addEventListener("load", () => resolve({ status: request.status, body: request.responseText }));
+    request.addEventListener("error", () => reject(new Error("The upload could not reach the Assets API.")));
+    request.addEventListener("abort", () => reject(new Error("The upload was cancelled.")));
+    request.send(body);
+  });
+
+  if (response.status === 401 && retry) {
+    if (connection.value.userId) clearAssetsBrowserToken(connection.value.userId);
+    try { await acquireToken(true); }
+    catch (caught) {
+      connection.value.connected = false;
+      throw caught;
+    }
+    uploadProgress.value = 0;
+    return uploadFormData<T>(path, body, sessionToken, false);
+  }
+  if (response.status === 401) {
+    if (connection.value.userId) clearAssetsBrowserToken(connection.value.userId);
+    connection.value.connected = false;
+  }
+  if (response.status < 200 || response.status >= 300) {
+    let payload: { error_description?: string; message?: string } = {};
+    try { payload = JSON.parse(response.body || "{}"); }
+    catch { /* Use the status fallback when the API did not return JSON. */ }
+    throw new Error(payload.error_description || payload.message || `Assets API returned ${response.status}`);
+  }
+  return response.status === 204 || !response.body ? {} as T : JSON.parse(response.body) as T;
 }
 
 async function refreshAssets() {
@@ -352,6 +406,7 @@ function openUpload(asset?: AssetItem) {
   uploadProjectUid.value = asset?.projectUid ?? projectFilter.value;
   uploadObjectId.value = asset?.id ?? "";
   uploadFiles.value = [];
+  uploadProgress.value = null;
   if (fileInput.value) fileInput.value.value = "";
   uploadDialog.value = true;
 }
@@ -371,6 +426,7 @@ async function uploadAssets() {
     return;
   }
   busy.value = true;
+  uploadProgress.value = 0;
   let sessionToken: string | undefined;
   try {
     const session = await assetsFetch<UploadSession>("/sessions", {
@@ -385,9 +441,7 @@ async function uploadAssets() {
       })),
     }));
     uploadFiles.value.forEach((file, index) => formData.append(`file${index}`, file));
-    await assetsFetch("/assets", {
-      method: "POST", sessionToken, body: formData,
-    });
+    await uploadFormData("/assets", formData, sessionToken);
     requestError.value = null;
     uploadDialog.value = false;
     await refreshAssets();
@@ -400,6 +454,7 @@ async function uploadAssets() {
       }).catch(() => {});
     }
     busy.value = false;
+    uploadProgress.value = null;
   }
 }
 </script>
@@ -590,7 +645,8 @@ async function uploadAssets() {
         <el-button type="primary" :loading="busy" @click="renameAsset">Save</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="uploadDialog" :title="uploadObjectId ? 'Upload new version' : 'Upload files'" width="min(560px, 94vw)">
+    <el-dialog v-model="uploadDialog" :title="uploadObjectId ? 'Upload new version' : 'Upload files'"
+      width="min(560px, 94vw)" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy">
       <el-form label-position="top" @submit.prevent="uploadAssets">
         <el-form-item label="Asset project">
           <el-select v-model="uploadProjectUid" style="width: 100%" :disabled="Boolean(uploadObjectId)">
@@ -601,8 +657,14 @@ async function uploadAssets() {
         <el-form-item label="Files (up to 20, 100 MiB each)">
           <input ref="fileInput" type="file" :multiple="!uploadObjectId" @change="selectFiles" />
         </el-form-item>
+        <div v-if="busy && uploadProgress !== null" class="upload-progress" aria-live="polite">
+          <span class="upload-progress-label">
+            {{ uploadProgress < 1 ? "Preparing upload…" : uploadProgress < 100 ? "Uploading files…" : "Processing files…" }}
+          </span>
+          <el-progress :percentage="uploadProgress" :stroke-width="12" />
+        </div>
       </el-form>
-      <template #footer><el-button @click="uploadDialog = false">Cancel</el-button>
+      <template #footer><el-button :disabled="busy" @click="uploadDialog = false">Cancel</el-button>
         <el-button type="primary" :loading="busy" :disabled="!uploadProjectUid || !uploadFiles.length || uploadFiles.length > 20"
           @click="uploadAssets">Upload</el-button></template>
     </el-dialog>
@@ -618,6 +680,8 @@ async function uploadAssets() {
 .fingerprint-value { font-family: var(--el-font-family-monospace, monospace); }
 .latest-version-tag { margin-left: 10px; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 18px; }
+.upload-progress { margin-top: 4px; text-align: left; }
+.upload-progress-label { display: block; margin-bottom: 8px; color: var(--el-text-color-regular); font-size: 14px; }
 :global(.asset-actions-menu .el-dropdown-menu__item.asset-action-danger) {
   color: var(--el-color-danger);
 }
