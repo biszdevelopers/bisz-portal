@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { encodeManifest } from "@basis/assets-vfs";
+import { encodeManifest, parseManifest } from "@basis/assets-vfs";
 import {
   AssetsProjectRequestError,
+  assetsVfsProjectInput,
   assetsManifestExists,
   assetsProjectExists,
   createAssetsProject,
+  createAssetsProjectFilesystem,
   createAssetsRootDirectory,
   deleteAssetsProject,
 } from "../server/utils/assets-projects";
@@ -24,6 +26,18 @@ afterEach(() => {
 });
 
 describe("Assets project API", () => {
+  test("uses the portal UUID for the machine-only VFS project", () => {
+    expect(
+      assetsVfsProjectInput({
+        id: "70b06b04-239a-44e5-a215-e11e10a7fe40",
+        name: "Portal",
+      }),
+    ).toEqual({
+      name: "VFS_70b06b04-239a-44e5-a215-e11e10a7fe40",
+      description: "Machine-only VFS storage for portal project Portal.",
+    });
+  });
+
   test("creates a project on behalf of the bearer token", async () => {
     const fetchMock = setFetch(async () =>
       Response.json({ uid: "assets-123", name: "Portal", description: "Files" }),
@@ -91,6 +105,70 @@ describe("Assets project API", () => {
         globalThis.fetch,
       ),
     ).resolves.toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("initializes the VFS with portal project metadata", async () => {
+    const objects = new Map<string, Uint8Array>();
+    setFetch(async (input, init) => {
+      const request = input instanceof Request
+        ? input
+        : new Request(String(input), init);
+      const path = new URL(request.url).pathname;
+
+      if (request.method === "GET") {
+        const bytes = objects.get(decodeURIComponent(path.slice(1)));
+        if (!bytes) return new Response(null, { status: 404 });
+        const body = new Uint8Array(bytes.byteLength);
+        body.set(bytes);
+        return new Response(body.buffer);
+      }
+      if (path === "/sessions") {
+        expect(await request.json()).toEqual({ projectUid: "assets-123" });
+        return Response.json({ sessionToken: "upload-token" });
+      }
+
+      const form = await request.formData();
+      const manifest = JSON.parse(String(form.get("manifest"))) as {
+        files: Array<{ fieldName: string; objectId: string }>;
+      };
+      for (const item of manifest.files) {
+        const file = form.get(item.fieldName) as File;
+        objects.set(item.objectId, new Uint8Array(await file.arrayBuffer()));
+      }
+      return Response.json({
+        items: manifest.files.map(({ objectId: id }) => ({ id })),
+      });
+    });
+
+    const manifestId = await createAssetsProjectFilesystem(
+      "user-token",
+      "assets-123",
+      {
+        id: "70b06b04-239a-44e5-a215-e11e10a7fe40",
+        name: "Portal",
+        slug: "portal",
+        description: "Project files",
+      },
+      "https://assets.example",
+      globalThis.fetch,
+    );
+
+    const root = parseManifest(objects.get(manifestId)!);
+    const devconnect = root.directories.find(({ name }) => name === ".devconnect");
+    expect(devconnect).toBeDefined();
+    const devconnectManifest = parseManifest(objects.get(devconnect!.manifestId)!);
+    const schema = devconnectManifest.files.find(({ name }) => name === "SCHEMA");
+    expect(schema).toBeDefined();
+    expect(JSON.parse(new TextDecoder().decode(objects.get(schema!.assetId)!))).toEqual({
+      schemaVersion: 1,
+      kind: "bisz-portal-project",
+      project: {
+        id: "70b06b04-239a-44e5-a215-e11e10a7fe40",
+        name: "Portal",
+        slug: "portal",
+        description: "Project files",
+      },
+    });
   });
 
   test("distinguishes linked, missing, and unavailable projects", async () => {

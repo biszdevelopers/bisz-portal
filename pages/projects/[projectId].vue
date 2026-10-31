@@ -106,10 +106,11 @@ const assetsLink = computed<ProjectAssetsLinkView>(() => {
   if (assetsLinkData.value?.assets) return assetsLinkData.value.assets;
   return {
     uid: project.value?.assetsProjectUid ?? null,
+    vfsUid: project.value?.assetsVfsProjectUid ?? null,
     manifestObjectId: project.value?.assetsManifestObjectId ?? null,
     status: assetsLinkError.value
       ? "unavailable"
-      : project.value?.assetsProjectUid
+      : project.value?.assetsProjectUid || project.value?.assetsVfsProjectUid
         ? "unavailable"
         : "unlinked",
   };
@@ -499,9 +500,9 @@ async function repairAssetsLink() {
             <strong class="bold">About operations on file system</strong>
             <p>You can only see the directory of this project's virtural file system here. To edit files, you can connect via SSH.</p>
             <p>To connect to this project's virtual file system, do the following:</p>
-            <p class="font-mono my-2" v-if="assetsLink.manifestObjectId">ssh {{ assetsLink.manifestObjectId }}@vfs.bisz.dev</p>
+            <p class="font-mono my-2" v-if="assetsLink.manifestObjectId">ssh {{ assetsLink.manifestObjectId }}@ssh-vfs.bisz.dev</p>
             <p>Or uploading and downloading something like this:</p>
-            <p class="font-mono my-2" v-if="assetsLink.manifestObjectId">scp {{ assetsLink.manifestObjectId }}@vfs.bisz.dev:/path/to/file ./local/path</p>
+            <p class="font-mono my-2" v-if="assetsLink.manifestObjectId">scp {{ assetsLink.manifestObjectId }}@ssh-vfs.bisz.dev:/path/to/file ./local/path</p>
             <p>You will be prompted to log in via DevConnect</p>
             <p>For more, see here <el-link href="https://bisz.dev/VFS" target="_blank" underline="never">about VFS SSH</el-link></p>
           </el-card>
@@ -579,9 +580,9 @@ async function repairAssetsLink() {
             <section id="project-settings-assets" class="settings-section">
               <h2>Assets storage</h2>
               <p>
-                This project uses Assets as web storage for essential files.
-                Files and Assets project metadata are managed from the Assets
-                page or its API.
+                The user-facing Assets project stores versioned assets. A
+                separate machine-only Assets project stores the virtual file
+                system used by the Files tab.
               </p>
               <el-divider />
 
@@ -596,6 +597,10 @@ async function repairAssetsLink() {
                     <pre v-if="assetsLink.uid">{{ assetsLink.uid }}</pre>
                     <span v-else>Not allocated</span>
                   </el-descriptions-item>
+                  <el-descriptions-item label="Machine VFS project UID">
+                    <pre v-if="assetsLink.vfsUid">{{ assetsLink.vfsUid }}</pre>
+                    <span v-else>Not allocated</span>
+                  </el-descriptions-item>
                   <el-descriptions-item label="VFS root manifest object ID">
                     <pre v-if="assetsLink.manifestObjectId">{{ assetsLink.manifestObjectId }}</pre>
                     <span v-else>Not allocated</span>
@@ -604,24 +609,24 @@ async function repairAssetsLink() {
 
                 <el-alert
                   v-if="assetsLink.status === 'missing'"
-                  title="The linked Assets project no longer exists"
-                  description="An editor can allocate a replacement Assets project. The old link will be replaced only after allocation succeeds."
+                  title="An Assets project or VFS manifest is missing"
+                  description="An editor can allocate the missing storage. Existing healthy links are preserved."
                   type="warning"
                   :closable="false"
                   show-icon
                 />
                 <el-alert
                   v-else-if="assetsLink.status === 'unavailable'"
-                  title="Assets link could not be verified"
-                  description="Repair is disabled until the Assets service can confirm whether the linked project exists."
+                  title="Assets links could not be verified"
+                  description="Repair is disabled until the Assets service can verify both linked projects."
                   type="warning"
                   :closable="false"
                   show-icon
                 />
                 <el-alert
                   v-else-if="assetsLink.status === 'unlinked'"
-                  title="No Assets project is linked"
-                  description="This is expected for legacy portal projects. An editor can allocate an Assets project now."
+                  title="No Assets projects are linked"
+                  description="An editor can allocate the versioned Assets project and machine-only VFS project now."
                   type="info"
                   :closable="false"
                   show-icon

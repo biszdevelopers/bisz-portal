@@ -27,6 +27,7 @@ export default defineEventHandler(async (event) => {
   const [project] = await useDatabase()
     .select({
       assetsProjectUid: projects.assetsProjectUid,
+      assetsVfsProjectUid: projects.assetsVfsProjectUid,
       assetsManifestObjectId: projects.assetsManifestObjectId,
     })
     .from(projects)
@@ -39,23 +40,33 @@ export default defineEventHandler(async (event) => {
     );
   }
 
-  if (!project.assetsProjectUid || !project.assetsManifestObjectId) {
+  if (
+    !project.assetsProjectUid ||
+    !project.assetsVfsProjectUid ||
+    !project.assetsManifestObjectId
+  ) {
+    const unlinked =
+      !project.assetsProjectUid &&
+      !project.assetsVfsProjectUid &&
+      !project.assetsManifestObjectId;
     return apiResult(
       event,
       new APIResponse({
         assets: {
           uid: project.assetsProjectUid,
+          vfsUid: project.assetsVfsProjectUid,
           manifestObjectId: project.assetsManifestObjectId,
-          status: "unlinked",
+          status: unlinked ? "unlinked" : "missing",
         },
       }),
     );
   }
 
-  const [projectExists, manifestExists] = await Promise.all([
+  const [projectExists, vfsProjectExists, manifestExists] = await Promise.all([
     assetsProjectExists(project.assetsProjectUid),
+    assetsProjectExists(project.assetsVfsProjectUid),
     assetsManifestExists(
-      project.assetsProjectUid,
+      project.assetsVfsProjectUid,
       project.assetsManifestObjectId,
     ),
   ]);
@@ -64,11 +75,16 @@ export default defineEventHandler(async (event) => {
     new APIResponse({
       assets: {
         uid: project.assetsProjectUid,
+        vfsUid: project.assetsVfsProjectUid,
         manifestObjectId: project.assetsManifestObjectId,
         status:
-          projectExists === null || manifestExists === null
+          projectExists === null ||
+          vfsProjectExists === null ||
+          manifestExists === null
             ? "unavailable"
-            : projectExists === true && manifestExists === true
+            : projectExists === true &&
+                vfsProjectExists === true &&
+                manifestExists === true
             ? "linked"
             : "missing",
       },

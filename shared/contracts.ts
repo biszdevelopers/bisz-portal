@@ -156,6 +156,7 @@ export type ProjectSummary = {
   description: string;
   githubRepository: string | null;
   assetsProjectUid: string | null;
+  assetsVfsProjectUid: string | null;
   assetsManifestObjectId: string | null;
   status: "active" | "archived";
   creatorId: string;
@@ -176,6 +177,7 @@ export type ProjectAssetsLinkStatus =
 
 export type ProjectAssetsLinkView = {
   uid: string | null;
+  vfsUid: string | null;
   manifestObjectId: string | null;
   status: ProjectAssetsLinkStatus;
 };

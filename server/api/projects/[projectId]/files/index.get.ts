@@ -27,13 +27,13 @@ export default defineEventHandler(async (event) => {
 
   const [project] = await useDatabase()
     .select({
-      assetsProjectUid: projects.assetsProjectUid,
+      assetsVfsProjectUid: projects.assetsVfsProjectUid,
       assetsManifestObjectId: projects.assetsManifestObjectId,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  if (!project?.assetsProjectUid || !project.assetsManifestObjectId) {
+  if (!project?.assetsVfsProjectUid || !project.assetsManifestObjectId) {
     return apiResult(event, new APIError("assets_link_required", "This project does not have an Assets VFS link", 409, "assets_link_required"));
   }
 
@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
       endpoint: assetsApiUrl(),
       manifestId: project.assetsManifestObjectId,
     });
-    if (vfs.manifest?.header.projectId !== project.assetsProjectUid) {
+    if (vfs.manifest?.header.projectId !== project.assetsVfsProjectUid) {
       return apiResult(event, new APIError("assets_link_invalid", "The VFS manifest belongs to another Assets project", 409, "assets_link_invalid"));
     }
     const entries = await vfs.readdir(query.data.path);

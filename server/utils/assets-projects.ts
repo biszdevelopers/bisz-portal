@@ -20,6 +20,20 @@ const assetsProjectListSchema = z.object({
 
 export type AssetsProject = z.infer<typeof assetsProjectSchema>;
 
+export type AssetsProjectSchemaInfo = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+};
+
+export function assetsVfsProjectInput(project: { id: string; name: string }) {
+  return {
+    name: `VFS_${project.id}`,
+    description: `Machine-only VFS storage for portal project ${project.name}.`,
+  };
+}
+
 export class AssetsProjectRequestError extends Error {
   constructor(
     message: string,
@@ -120,6 +134,54 @@ export async function createAssetsRootDirectory(
     }
     throw new AssetsProjectRequestError(
       "The Assets VFS root directory could not be created",
+      502,
+    );
+  }
+}
+
+export async function createAssetsProjectFilesystem(
+  accessToken: string,
+  projectUid: string,
+  project: AssetsProjectSchemaInfo,
+  baseUrl = assetsApiUrl(),
+  fetchImplementation = globalThis.fetch,
+) {
+  const manifestObjectId = await createAssetsRootDirectory(
+    accessToken,
+    projectUid,
+    baseUrl,
+    fetchImplementation,
+  );
+
+  try {
+    const vfs = await AssetsVFS.mount({
+      endpoint: baseUrl,
+      manifestId: manifestObjectId,
+      token: accessToken,
+      fetch: fetchImplementation,
+    });
+    await vfs.mkdir("/.devconnect");
+    const schemaFile = await vfs.open("/.devconnect/SCHEMA", "wx");
+    try {
+      await schemaFile.write(`${JSON.stringify({
+        schemaVersion: 1,
+        kind: "bisz-portal-project",
+        project,
+      }, null, 2)}\n`);
+    } finally {
+      await schemaFile.close();
+    }
+    return manifestObjectId;
+  } catch (error) {
+    if (error instanceof AssetsVFSError) {
+      const status = error.status;
+      throw new AssetsProjectRequestError(
+        error.message,
+        status && status >= 400 && status < 500 ? status : 502,
+      );
+    }
+    throw new AssetsProjectRequestError(
+      "The Assets VFS project metadata could not be created",
       502,
     );
   }

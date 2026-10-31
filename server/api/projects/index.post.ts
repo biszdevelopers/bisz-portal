@@ -19,9 +19,11 @@ import { projectMembers, projects } from "~/server/database/schema";
 import { getProjectDetail, slugify } from "~/server/services/projects";
 import {
   AssetsProjectRequestError,
+  assetsVfsProjectInput,
   cleanupAssetsProject,
   createAssetsProject,
-  createAssetsRootDirectory,
+  createAssetsProjectFilesystem,
+  type AssetsProject,
 } from "~/server/utils/assets-projects";
 
 export default defineEventHandler(async (event) => {
@@ -64,6 +66,7 @@ export default defineEventHandler(async (event) => {
 
   const assetToken = await assetsAccessToken(event);
   if (assetToken instanceof APIError) return apiResult(event, assetToken);
+  const assetsAccessTokenValue = assetToken;
 
   const assetClaims = await validateAssetsToken(assetToken, auth.user.id).catch(
     () => null,
@@ -97,7 +100,8 @@ export default defineEventHandler(async (event) => {
     );
   }
 
-  let assetsProject;
+  const projectId = crypto.randomUUID();
+  let assetsProject: AssetsProject;
   try {
     assetsProject = await createAssetsProject(assetToken, {
       name: body.name,
@@ -118,18 +122,53 @@ export default defineEventHandler(async (event) => {
     throw error;
   }
 
-  let manifestObjectId: string;
+  let assetsVfsProject: AssetsProject;
   try {
-    manifestObjectId = await createAssetsRootDirectory(
+    assetsVfsProject = await createAssetsProject(
       assetToken,
-      assetsProject.uid,
+      assetsVfsProjectInput({ id: projectId, name: body.name }),
     );
   } catch (error) {
     await cleanupAssetsProject(
       assetToken,
       assetsProject.uid,
-      "Assets VFS root directory allocation failed",
+      "machine VFS Assets project allocation failed",
     );
+    if (error instanceof AssetsProjectRequestError) {
+      return apiResult(
+        event,
+        new APIError(
+          "assets_project_creation_failed",
+          error.message,
+          error.status,
+          "assets_project_creation_failed",
+        ),
+      );
+    }
+    throw error;
+  }
+
+  async function cleanupAllocatedAssetsProjects(reason: string) {
+    await Promise.all([
+      cleanupAssetsProject(assetsAccessTokenValue, assetsProject.uid, reason),
+      cleanupAssetsProject(assetsAccessTokenValue, assetsVfsProject.uid, reason),
+    ]);
+  }
+
+  let manifestObjectId: string;
+  try {
+    manifestObjectId = await createAssetsProjectFilesystem(
+      assetToken,
+      assetsVfsProject.uid,
+      {
+        id: projectId,
+        name: body.name,
+        slug,
+        description: body.description,
+      },
+    );
+  } catch (error) {
+    await cleanupAllocatedAssetsProjects("Assets VFS root directory allocation failed");
     if (error instanceof AssetsProjectRequestError) {
       return apiResult(
         event,
@@ -150,11 +189,13 @@ export default defineEventHandler(async (event) => {
       const [created] = await transaction
         .insert(projects)
         .values({
+          id: projectId,
           name: body.name,
           slug,
           description: body.description,
           creatorId: auth.user.id,
           assetsProjectUid: assetsProject.uid,
+          assetsVfsProjectUid: assetsVfsProject.uid,
           assetsManifestObjectId: manifestObjectId,
         })
         .returning();
@@ -168,11 +209,7 @@ export default defineEventHandler(async (event) => {
       return created;
     });
   } catch (error) {
-    await cleanupAssetsProject(
-      assetToken,
-      assetsProject.uid,
-      "portal project persistence failed",
-    );
+    await cleanupAllocatedAssetsProjects("portal project persistence failed");
     if (
       typeof error === "object" &&
       error &&

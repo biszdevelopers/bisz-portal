@@ -86,6 +86,7 @@ export const projects = pgTable("projects", {
   description: text("description").notNull().default(""),
   githubRepository: text("github_repository"),
   assetsProjectUid: text("assets_project_uid").unique(),
+  assetsVfsProjectUid: text("assets_vfs_project_uid").unique(),
   assetsManifestObjectId: text("assets_manifest_object_id").unique(),
   status: projectStatus("status").notNull().default("active"),
   creatorId: uuid("creator_id").notNull(),
