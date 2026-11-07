@@ -4,6 +4,8 @@ import { useDatabase } from "~/server/database/client";
 import { projectMembers, projects, tasks } from "~/server/database/schema";
 import { findBasisUser, type BasisUserView } from "~/server/utils/basis-users";
 import { projectCapabilities } from "~/server/utils/authorization";
+import { taskTagViewsByTaskId } from "~/server/services/task-tags";
+import { taskMemberViewsByTaskId } from "~/server/services/task-members";
 import type {
   ProjectSummary,
   ProjectMemberView,
@@ -54,6 +56,7 @@ export async function listProjectSummaries(
       projectId: tasks.projectId,
       value: count(),
       completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')::int`,
+      reviewTaskId: sql<string | null>`max(${tasks.id}::text) filter (where ${tasks.status} = 'in_review')`,
     })
     .from(tasks)
     .where(inArray(tasks.projectId, ids))
@@ -87,8 +90,6 @@ export async function listProjectSummaries(
     description: project.description,
     githubRepository: project.githubRepository,
     assetsProjectUid: project.assetsProjectUid,
-    assetsVfsProjectUid: project.assetsVfsProjectUid,
-    assetsManifestObjectId: project.assetsManifestObjectId,
     status: project.status,
     creatorId: project.creatorId,
     createdAt: iso(project.createdAt),
@@ -96,6 +97,8 @@ export async function listProjectSummaries(
     memberCount: membersByProject.get(project.id)?.length ?? 0,
     taskCount: Number(taskMap.get(project.id)?.value ?? 0),
     completedTaskCount: Number(taskMap.get(project.id)?.completed ?? 0),
+    reviewTaskId: taskMap.get(project.id)?.reviewTaskId ?? null,
+    reviewLocked: Boolean(taskMap.get(project.id)?.reviewTaskId),
     members: membersByProject.get(project.id) ?? [],
     capabilities: projectCapabilities(auth, membership),
   }));
@@ -118,14 +121,23 @@ export async function getProjectDetail(
         .where(eq(tasks.projectId, projectId))
         .orderBy(desc(tasks.createdAt))
     : [];
+  const tagsByTaskId = await taskTagViewsByTaskId(
+    taskRows.map(({ task }) => task.id),
+  );
+  const taskMembersByTaskId = await taskMemberViewsByTaskId(
+    taskRows.map(({ task }) => task.id),
+  );
   const linkedTasks: TaskView[] = taskRows.map(({ task, projectName }) => ({
     id: task.id,
     projectId: task.projectId,
+    creatorId: task.creatorId,
     projectName,
     title: task.title,
     description: task.description,
     status: task.status,
     dueDate: task.dueDate,
+    tags: tagsByTaskId.get(task.id) ?? [],
+    members: taskMembersByTaskId.get(task.id) ?? [],
     createdAt: iso(task.createdAt),
     updatedAt: iso(task.updatedAt),
   }));

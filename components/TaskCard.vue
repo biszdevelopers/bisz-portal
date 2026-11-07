@@ -20,7 +20,7 @@ const description = computed(() => markdownExcerpt(props.task.description));
       :type="
         task.status === 'done'
           ? 'success'
-          : task.status === 'in_progress'
+          : task.status === 'in_review'
             ? 'warning'
             : 'info'
       "

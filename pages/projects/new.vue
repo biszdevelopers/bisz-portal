@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus";
-import type { ProjectSummary } from "~/shared/contracts";
+import type { ProjectSummary, UserSummary } from "~/shared/contracts";
 import type { AssetsCapabilities } from "~/shared/permissions";
 
 type ProjectResponse = { project: ProjectSummary };
@@ -23,9 +23,9 @@ const {
 const submitting = ref(false);
 const requestError = shallowRef<unknown>(null);
 const form = reactive({ name: "", slug: "", description: "" });
+const selectedMembers = ref<UserSummary[]>([]);
 
 const requiredAssetPermissions = [
-  { key: "assetsCreate", label: "Assets.Assets.create" },
   { key: "projectsCreate", label: "Assets.Projects.create" },
 ] as const;
 const missingAssetPermissions = computed(() =>
@@ -44,8 +44,8 @@ const assetPermissionsDescription = computed(() => {
   if (assetsPermissionsError.value)
     return "Could not verify your Assets permissions. Reload the page to try again.";
   if (!assetsConnection.value?.connected)
-    return "Connect to DevConnect Assets to verify Assets.Projects.create and Assets.Assets.create.";
-  return `Project creation requires Assets.Projects.create and Assets.Assets.create. Missing: ${missingAssetPermissions.value.join(", ")}`;
+    return "Connect to DevConnect Assets to verify Assets.Projects.create.";
+  return `Project creation requires Assets.Projects.create. Missing: ${missingAssetPermissions.value.join(", ")}`;
 });
 
 const slugPreview = computed(
@@ -75,7 +75,11 @@ async function saveProject() {
   try {
     const response = await $fetch<ProjectResponse>("/api/projects", {
       method: "POST",
-      body: { ...form, slug: form.slug || undefined },
+      body: {
+        ...form,
+        slug: form.slug || undefined,
+        memberIds: selectedMembers.value.map((user) => user.id),
+      },
     });
     requestError.value = null;
     ElMessage.success("Project created");
@@ -143,6 +147,13 @@ function cancel() {
             type="textarea"
             :rows="13"
             placeholder="# Project overview&#10;&#10;Add goals, context, and working notes in Markdown."
+          />
+        </el-form-item>
+
+        <el-form-item label="Members">
+          <UsersInput
+            v-model="selectedMembers"
+            placeholder="Search users to add to this project"
           />
         </el-form-item>
 

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { DocumentChecked } from "@element-plus/icons-vue";
 import type { TaskView } from "~/shared/contracts";
+import { portalLocale } from "~/shared/locale";
 
 const {
+  data: accessData,
   capabilities,
   pending: accessPending,
   error: accessError,
@@ -21,10 +23,13 @@ const projects = computed(() => [
   ).entries(),
 ]);
 const filteredTasks = computed(() =>
-  tasks.value.filter(
-    (task) =>
-      (!projectFilter.value || task.projectId === projectFilter.value) &&
-      (statusFilter.value === "all" || task.status === statusFilter.value),
+  tasks.value.filter((task) =>
+    taskMatchesOverview(
+      task,
+      accessData.value?.user.id,
+      statusFilter.value,
+      projectFilter.value,
+    ),
   ),
 );
 const groupedTasks = computed(() => {
@@ -57,7 +62,7 @@ function taskDateHeading(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return "Invalid due date";
   const [, year, month, day] = match;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(portalLocale, {
     dateStyle: "full",
   }).format(new Date(Number(year), Number(month) - 1, Number(day)));
 }
@@ -83,7 +88,7 @@ function taskDateHeading(value: string) {
         <el-tabs v-model="statusFilter" class="status-tabs">
           <el-tab-pane label="All" name="all" />
           <el-tab-pane label="To do" name="todo" />
-          <el-tab-pane label="In progress" name="in_progress" />
+          <el-tab-pane label="In review" name="in_review" />
           <el-tab-pane label="Done" name="done" />
         </el-tabs>
         <el-select
@@ -128,7 +133,7 @@ function taskDateHeading(value: string) {
                 :type="
                   task.status === 'done'
                     ? 'success'
-                    : task.status === 'in_progress'
+                    : task.status === 'in_review'
                       ? 'warning'
                       : 'info'
                 "

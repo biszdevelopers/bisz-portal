@@ -5,7 +5,6 @@ import {
   Calendar,
   Check,
   Connection,
-  DataAnalysis,
   DocumentChecked,
   FolderOpened,
   Grid,
@@ -58,15 +57,6 @@ function handleThemeCommand(command: ThemePreference) {
 
 const navigation = computed(() => [
   { label: "Overview", path: "/", icon: Grid },
-  { label: "Assets", path: "/assets", icon: Collection },
-  { label: "Tests", path: "/tests", icon: DataAnalysis },
-  {
-    label: "Projects",
-    path: "/projects",
-    icon: FolderOpened,
-    enabled: capabilities.value.projectsRead,
-    permission: "BiszPortal.Projects.read",
-  },
   {
     label: "Tasks",
     path: "/tasks",
@@ -80,6 +70,13 @@ const navigation = computed(() => [
     icon: WarningFilled,
     enabled: capabilities.value.incidentsRead,
     permission: "BiszPortal.Incidents.read",
+  },
+  {
+    label: "Projects",
+    path: "/projects",
+    icon: FolderOpened,
+    enabled: capabilities.value.projectsRead,
+    permission: "BiszPortal.Projects.read",
   },
   {
     label: "Calendar",
@@ -102,6 +99,7 @@ const navigation = computed(() => [
     enabled: capabilities.value.applicationsRead,
     permission: "BiszPortal.Applications.read",
   },
+  { label: "Assets", path: "/assets", icon: Collection },
 ]);
 
 const pageTitle = computed(

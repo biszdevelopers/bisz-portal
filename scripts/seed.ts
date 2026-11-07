@@ -50,7 +50,7 @@ try {
       {
         id: "20000000-0000-4000-8000-000000000001",
         title: "Confirm launch checklist",
-        status: "in_progress" as const,
+        status: "in_review" as const,
         description: "Review owners and blockers before launch.",
       },
       {
@@ -70,11 +70,12 @@ try {
     for (const task of seededTasks) {
       await transaction
         .insert(tasks)
-        .values({ ...task, projectId })
+        .values({ ...task, projectId, creatorId: seedOwnerId })
         .onConflictDoUpdate({
           target: tasks.id,
           set: {
             projectId,
+            creatorId: seedOwnerId,
             title: task.title,
             description: task.description,
             status: task.status,

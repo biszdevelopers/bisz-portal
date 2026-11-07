@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { apiResult } from "~/server/utils/api-response";
 import {
@@ -8,10 +8,22 @@ import {
 import { requireSameOrigin } from "~/server/utils/basis-applications";
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import { useDatabase } from "~/server/database/client";
-import { projects, tasks } from "~/server/database/schema";
+import {
+  projects,
+  projectMembers,
+  tags as tagCatalog,
+  tasks,
+  taskMembers,
+  taskTags,
+} from "~/server/database/schema";
 import { parseBody } from "~/server/utils/request";
-import { taskCreateSchema, type TaskView } from "~/shared/contracts";
+import {
+  taskCreateSchema,
+  type TagView,
+  type TaskView,
+} from "~/shared/contracts";
 import { PortalPermissions } from "~/shared/permissions";
+import { findBasisUser } from "~/server/utils/basis-users";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -35,6 +47,22 @@ export default defineEventHandler(async (event) => {
 
   const body = await parseBody(event, taskCreateSchema);
   if (body instanceof APIError) return apiResult(event, body);
+  const memberUsers = new Map(
+    await Promise.all(
+      body.memberIds.map(async (userId) => [userId, await findBasisUser(userId)] as const),
+    ),
+  );
+  if (body.memberIds.some((userId) => !memberUsers.get(userId))) {
+    return apiResult(
+      event,
+      new APIError(
+        "invalid_task_members",
+        "One or more selected users do not exist or are disabled",
+        400,
+        "invalid_task_members",
+      ),
+    );
+  }
 
   const result = await useDatabase().transaction(async (transaction) => {
     const [project] = await transaction
@@ -55,17 +83,85 @@ export default defineEventHandler(async (event) => {
         "project_archived",
       );
     }
+    const [reviewTask] = await transaction
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.projectId, project.id), eq(tasks.status, "in_review")))
+      .limit(1);
+    if (reviewTask) {
+      return new APIError(
+        "project_in_review",
+        "This project is locked while a task is in review",
+        409,
+        "project_in_review",
+      );
+    }
+
+    let selectedTags: TagView[] = [];
+    if (body.tags.length) {
+      const tagRows = await transaction
+        .select({ name: tagCatalog.name, color: tagCatalog.color })
+        .from(tagCatalog)
+        .where(inArray(tagCatalog.name, body.tags))
+        .for("key share");
+      if (tagRows.length !== body.tags.length) {
+        return new APIError(
+          "invalid_task_tags",
+          "One or more selected tags no longer exist",
+          400,
+          "invalid_task_tags",
+        );
+      }
+      const byName = new Map(tagRows.map((tag) => [tag.name, tag]));
+      selectedTags = body.tags.map((name) => byName.get(name)!);
+    }
+
+    if (body.memberIds.length) {
+      const memberships = await transaction
+        .select({ userId: projectMembers.userId })
+        .from(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, project.id),
+            inArray(projectMembers.userId, body.memberIds),
+          ),
+        )
+        .for("key share");
+      if (memberships.length !== body.memberIds.length) {
+        return new APIError(
+          "invalid_task_members",
+          "Task members must already belong to this project",
+          400,
+          "invalid_task_members",
+        );
+      }
+    }
 
     const [created] = await transaction
       .insert(tasks)
       .values({
         projectId: project.id,
+        creatorId: auth.user.id,
         title: body.title,
         description: body.description,
         dueDate: body.dueDate,
       })
       .returning();
     if (!created) throw new Error("Task creation failed");
+
+    if (selectedTags.length) {
+      await transaction.insert(taskTags).values(
+        selectedTags.map((tag) => ({
+          taskId: created.id,
+          tagName: tag.name,
+        })),
+      );
+    }
+    if (body.memberIds.length) {
+      await transaction.insert(taskMembers).values(
+        body.memberIds.map((userId) => ({ taskId: created.id, userId })),
+      );
+    }
 
     await transaction
       .update(projects)
@@ -75,11 +171,22 @@ export default defineEventHandler(async (event) => {
     const task: TaskView = {
       id: created.id,
       projectId: created.projectId,
+      creatorId: created.creatorId,
       projectName: project.name,
       title: created.title,
       description: created.description,
       status: created.status,
       dueDate: created.dueDate,
+      tags: selectedTags,
+      members: body.memberIds.map((userId) => {
+        const user = memberUsers.get(userId)!;
+        return {
+          userId,
+          displayName: user.displayName,
+          image: user.image,
+          role: "assignee" as const,
+        };
+      }),
       createdAt: created.createdAt.toISOString(),
       updatedAt: created.updatedAt.toISOString(),
     };

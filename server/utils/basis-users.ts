@@ -46,3 +46,16 @@ export async function findBasisUser(
       : null,
   };
 }
+
+export async function findBasisUsers(userIds: string[]) {
+  const entries = await Promise.all(
+    [...new Set(userIds)].map(async (userId) => {
+      try {
+        return [userId, await findBasisUser(userId)] as const;
+      } catch {
+        return [userId, null] as const;
+      }
+    }),
+  );
+  return new Map(entries);
+}

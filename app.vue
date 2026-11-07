@@ -1,10 +1,14 @@
 <template>
-  <NuxtLayout>
-    <NuxtPage />
-  </NuxtLayout>
+  <el-config-provider :locale="elementLocale">
+    <NuxtLayout>
+      <NuxtPage />
+    </NuxtLayout>
+  </el-config-provider>
 </template>
 
 <script setup lang="ts">
+import elementLocale from "element-plus/es/locale/lang/en";
+
 const themeInitScript = `(() => {
   try {
     const preference = localStorage.getItem("bisz-portal-theme")
@@ -15,6 +19,7 @@ const themeInitScript = `(() => {
 })()`;
 
 useHead({
+  htmlAttrs: { lang: "en" },
   meta: [{ name: "color-scheme", content: "light dark" }],
   script: [
     { key: "theme-init", innerHTML: themeInitScript, tagPosition: "head" },

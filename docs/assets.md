@@ -15,14 +15,12 @@ key and keep it stable: changing it invalidates stored Assets connections.
 public reads and direct uploads.
 
 Portal project creation uses the private `BISZ_ASSETS_API_URL` from the Nitro
-server to create two Assets projects on behalf of the signed-in user. The
-user-facing, versioned Assets project uses the portal project's name. A separate
-machine-only project named `VFS_<portal-project-uuid>` owns the
-`@basis/assets-vfs` manifests and file objects. This requires
-`Assets.Projects.create` and `Assets.Assets.create` on the user's Assets token.
-The server stores both project UIDs and the VFS root manifest object ID. Project
-settings link `/assets?projectUid=...` to the user-facing project, while the
-Files tab mounts only the machine VFS project.
+server to create an Assets project on behalf of the signed-in user. The Assets
+project uses the portal project's name. This requires `Assets.Projects.create`
+on the user's Assets token. The server stores the Assets project UID on the
+portal project. Project settings link `/assets?projectUid=...` to that project,
+and the Files tab displays the same assets browser filtered to the project's
+assets.
 
 The portal checks that the Assets ID-token subject matches the signed-in portal
 user and refuses the authorization-code login when they differ. It validates the

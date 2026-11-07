@@ -22,6 +22,11 @@ export const projectCreateSchema = z.object({
     .optional()
     .or(z.literal("")),
   description: z.string().max(50_000).default(""),
+  memberIds: z
+    .array(z.string().uuid())
+    .max(50)
+    .default([])
+    .refine((values) => new Set(values).size === values.length, "Project members must be unique"),
 });
 
 export const projectUpdateSchema = z.object({
@@ -33,21 +38,6 @@ export const projectUpdateSchema = z.object({
     .max(120),
   description: z.string().max(50_000),
 });
-
-export const taskCreateSchema = z
-  .object({
-    title: z.string().trim().min(1).max(120),
-    description: z.string().max(50_000).default(""),
-    dueDate: z
-      .iso.date()
-      .nullable()
-      .default(null)
-      .refine(
-        (value) => value === null || value >= localDateOnly(),
-        "Due date cannot be in the past",
-      ),
-  })
-  .strict();
 
 export const tagColorSchema = z.enum([
   "blue",
@@ -95,6 +85,43 @@ export type TagView = {
   name: string;
   color: TagColor;
 };
+
+export const taskCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    description: z.string().max(50_000).default(""),
+    dueDate: z
+      .iso.date()
+      .nullable()
+      .default(null)
+      .refine(
+        (value) => value === null || value >= localDateOnly(),
+        "Due date cannot be in the past",
+      ),
+    tags: z
+      .array(tagNameSchema)
+      .max(20, "A task can have at most 20 tags")
+      .default([])
+      .refine(
+        (values) => new Set(values).size === values.length,
+        "Task tags must be unique",
+      ),
+    memberIds: z
+      .array(z.string().uuid())
+      .max(50, "A task can have at most 50 members")
+      .default([])
+      .refine(
+        (values) => new Set(values).size === values.length,
+        "Task members must be unique",
+      ),
+  })
+  .strict();
+
+export const taskStatusTransitionSchema = z
+  .object({ status: z.enum(["todo", "in_review", "done"]) })
+  .strict();
+
+export type TaskStatus = z.infer<typeof taskStatusTransitionSchema>["status"];
 
 export const repositoryValidationSchema = z
   .object({
@@ -149,6 +176,10 @@ export const memberUpdateSchema = z.object({
   ),
 });
 
+export const taskMemberCreateSchema = z
+  .object({ userId: z.string().uuid() })
+  .strict();
+
 export type ProjectSummary = {
   id: string;
   name: string;
@@ -156,8 +187,6 @@ export type ProjectSummary = {
   description: string;
   githubRepository: string | null;
   assetsProjectUid: string | null;
-  assetsVfsProjectUid: string | null;
-  assetsManifestObjectId: string | null;
   status: "active" | "archived";
   creatorId: string;
   createdAt: string;
@@ -165,6 +194,8 @@ export type ProjectSummary = {
   memberCount: number;
   taskCount: number;
   completedTaskCount: number;
+  reviewTaskId: string | null;
+  reviewLocked: boolean;
   members: ProjectMemberView[];
   capabilities: ProjectCapabilities;
 };
@@ -177,20 +208,7 @@ export type ProjectAssetsLinkStatus =
 
 export type ProjectAssetsLinkView = {
   uid: string | null;
-  vfsUid: string | null;
-  manifestObjectId: string | null;
   status: ProjectAssetsLinkStatus;
-};
-
-export type ProjectFileEntry = {
-  name: string;
-  type: "directory" | "file";
-  objectId: string;
-};
-
-export type ProjectDirectoryView = {
-  path: string;
-  entries: ProjectFileEntry[];
 };
 
 export type ProjectMemberView = {
@@ -205,18 +223,36 @@ export type ProjectMemberView = {
 export type TaskView = {
   id: string;
   projectId: string;
+  creatorId: string;
   projectName: string;
   title: string;
   description: string;
-  status: "todo" | "in_progress" | "done";
+  status: TaskStatus;
   dueDate: string | null;
+  tags: TagView[];
+  members: TaskMemberView[];
   createdAt: string;
   updatedAt: string;
+};
+
+export type TaskMemberView = {
+  userId: string;
+  displayName: string;
+  image: string | null;
+  role: "assignee";
+};
+
+export type TaskActions = {
+  submitForReview: boolean;
+  review: boolean;
+  manageMembers: boolean;
 };
 
 export const userListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  q: z.string().trim().max(200).optional(),
+  projectId: z.string().uuid().optional(),
 });
 
 export const userUpdateSchema = z.object({

@@ -5,14 +5,13 @@ import {
   Loading,
   Plus,
 } from "@element-plus/icons-vue";
-import { ElMessage, type FormInstance, type FormRules } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
-  localDateOnly,
-  type ProjectDirectoryView,
   type ProjectAssetsLinkView,
   type ProjectSummary,
   type RepositoryValidationResult,
   type TaskView,
+  type UserSummary,
 } from "~/shared/contracts";
 
 type ProjectDetail = ProjectSummary & { tasks: TaskView[] };
@@ -21,10 +20,13 @@ type RepositoryUpdateResponse = RepositoryValidationResult & {
 };
 
 const route = useRoute();
-const runtimeConfig = useRuntimeConfig();
 const projectId = computed(() => String(route.params.projectId ?? ""));
 const headers = import.meta.server ? useRequestHeaders(["cookie"]) : undefined;
-const { data, pending, error } = await useFetch<{ project: ProjectDetail }>(
+const {
+  data,
+  pending,
+  error,
+} = await useFetch<{ project: ProjectDetail }>(
   () => `/api/projects/${encodeURIComponent(projectId.value)}`,
   { headers },
 );
@@ -38,39 +40,23 @@ const {
 );
 const project = computed(() => data.value?.project);
 const requestError = shallowRef<unknown>(null);
-const activeTab = ref("overview");
+const activeTab = useHashTab("overview", [
+  "overview",
+  "files",
+  "tasks",
+  "members",
+  "settings",
+]);
+const projectRoles = [
+  { label: "Owner", value: "owner" },
+  { label: "Member", value: "member" },
+];
 const saving = ref(false);
 const savingGithub = ref(false);
 const repairingAssetsLink = ref(false);
-const taskDialogOpen = ref(false);
-const creatingTask = ref(false);
-const filesLoading = ref(false);
-const filesLoaded = ref(false);
-const filesError = shallowRef<unknown>(null);
-const filesDirectory = ref<ProjectDirectoryView>({ path: "/", entries: [] });
-const taskFormRef = ref<FormInstance>();
+const changingMembers = ref(false);
+const selectedMembers = ref<UserSummary[]>([]);
 const form = reactive({ name: "", slug: "", description: "" });
-const taskForm = reactive({ title: "", description: "", dueDate: null as string | null });
-
-function validateTaskDueDate(
-  _rule: unknown,
-  value: string | null,
-  callback: (error?: Error) => void,
-) {
-  if (value && value < localDateOnly()) {
-    callback(new Error("Due date cannot be in the past"));
-    return;
-  }
-  callback();
-}
-
-const taskRules: FormRules<typeof taskForm> = {
-  title: [
-    { required: true, whitespace: true, message: "Enter a task title", trigger: "blur" },
-    { max: 120, message: "Use 120 characters or fewer", trigger: "blur" },
-  ],
-  dueDate: [{ validator: validateTaskDueDate, trigger: "change" }],
-};
 const githubForm = reactive({
   repositoryUrl: project.value?.githubRepository ?? "",
   defaultBranch: "main",
@@ -91,6 +77,7 @@ const canSaveGithub = computed(
   () =>
     Boolean(project.value?.capabilities.update) &&
     project.value?.status !== "archived" &&
+    !project.value?.reviewLocked &&
     repositoryValidation.state === "success" &&
     Boolean(repositoryValidationResult.value) &&
     repositoryValidationResult.value?.repository.url !==
@@ -100,17 +87,16 @@ const canSaveGithub = computed(
 const canEditProjectSettings = computed(
   () =>
     Boolean(project.value?.capabilities.update) &&
-    project.value?.status === "active",
+    project.value?.status === "active" &&
+    !project.value?.reviewLocked,
 );
 const assetsLink = computed<ProjectAssetsLinkView>(() => {
   if (assetsLinkData.value?.assets) return assetsLinkData.value.assets;
   return {
     uid: project.value?.assetsProjectUid ?? null,
-    vfsUid: project.value?.assetsVfsProjectUid ?? null,
-    manifestObjectId: project.value?.assetsManifestObjectId ?? null,
     status: assetsLinkError.value
       ? "unavailable"
-      : project.value?.assetsProjectUid || project.value?.assetsVfsProjectUid
+      : project.value?.assetsProjectUid
         ? "unavailable"
         : "unlinked",
   };
@@ -137,86 +123,85 @@ const assetsStatusType = computed(() => {
 const canCreateTask = computed(
   () =>
     Boolean(project.value?.capabilities.createTasks) &&
-    project.value?.status === "active",
+    project.value?.status === "active" &&
+    !project.value?.reviewLocked,
+);
+const canManageMembers = computed(
+  () =>
+    Boolean(project.value?.capabilities.manageMembers) &&
+    project.value?.status === "active" &&
+    !project.value?.reviewLocked,
+);
+const existingMemberIds = computed(
+  () => project.value?.members.map((member) => member.userId) ?? [],
+);
+const ownerIds = computed(
+  () =>
+    project.value?.members
+      .filter((member) => member.role === "owner")
+      .map((member) => member.userId) ?? [],
 );
 
-async function loadFilesDirectory(path: string) {
-  if (filesLoading.value) return;
-  filesLoading.value = true;
+async function addProjectMembers() {
+  if (!project.value || !canManageMembers.value || !selectedMembers.value.length)
+    return;
+  changingMembers.value = true;
   try {
-    const response = await $fetch<{ directory: ProjectDirectoryView }>(
-      `/api/projects/${encodeURIComponent(projectId.value)}/files`,
-      { query: { path } },
-    );
-    filesDirectory.value = response.directory;
-    filesError.value = null;
-    filesLoaded.value = true;
+    for (const user of selectedMembers.value) {
+      const response = await $fetch<{ project: ProjectDetail }>(
+        `/api/projects/${encodeURIComponent(projectId.value)}/members`,
+        {
+          method: "POST",
+          body: {
+            userId: user.id,
+            permissions: ["project.read", "tasks.read", "incidents.read"],
+          },
+        },
+      );
+      data.value = response;
+    }
+    selectedMembers.value = [];
+    requestError.value = null;
+    ElMessage.success("Project members added");
   } catch (caught) {
-    filesError.value = caught;
+    requestError.value = caught;
+    ElMessage.error(backendErrorMessage(caught, "Members could not be added."));
   } finally {
-    filesLoading.value = false;
+    changingMembers.value = false;
   }
 }
 
-watch(activeTab, (tab) => {
-  if (tab === "files" && !filesLoaded.value) void loadFilesDirectory("/");
-});
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleString();
-}
-
-function disablePastDueDates(value: Date) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return value.getTime() < today.getTime();
-}
-
-function openTaskDialog() {
-  if (!canCreateTask.value) return;
-  taskDialogOpen.value = true;
-}
-
-function resetTaskForm() {
-  taskForm.title = "";
-  taskForm.description = "";
-  taskForm.dueDate = null;
-  taskFormRef.value?.clearValidate();
-}
-
-async function createTask() {
-  if (!project.value || !canCreateTask.value || creatingTask.value) return;
-  const valid = await taskFormRef.value?.validate().catch(() => false);
-  if (!valid) return;
-
-  creatingTask.value = true;
+async function removeProjectMember(member: { userId: string; displayName: string }) {
+  if (!canManageMembers.value || ownerIds.value.includes(member.userId)) return;
+  const confirmed = await ElMessageBox.confirm(
+    `Remove ${member.displayName} from this project?`,
+    "Remove project member",
+    { type: "warning", confirmButtonText: "Remove" },
+  ).then(() => true, () => false);
+  if (!confirmed) return;
+  changingMembers.value = true;
   try {
-    const response = await $fetch<{ task: TaskView }>(
-      `/api/projects/${encodeURIComponent(projectId.value)}/tasks`,
-      {
-        method: "POST",
-        body: {
-          title: taskForm.title,
-          description: taskForm.description,
-          dueDate: taskForm.dueDate,
-        },
-      },
+    const response = await $fetch<{ project: ProjectDetail }>(
+      `/api/projects/${encodeURIComponent(projectId.value)}/members/${encodeURIComponent(member.userId)}`,
+      { method: "DELETE" },
     );
-    project.value.tasks.unshift(response.task);
-    project.value.taskCount += 1;
+    data.value = response;
     requestError.value = null;
-    taskDialogOpen.value = false;
-    ElMessage.success("Task created");
+    ElMessage.success("Project member removed");
   } catch (caught) {
     requestError.value = caught;
-    ElMessage.error(backendErrorMessage(caught, "The task could not be created."));
+    ElMessage.error(backendErrorMessage(caught, "The member could not be removed."));
   } finally {
-    creatingTask.value = false;
+    changingMembers.value = false;
   }
 }
 
 function openEdit() {
-  if (!project.value?.capabilities.update || project.value.status === "archived")
+  if (
+    !project.value?.capabilities.update ||
+    project.value.status === "archived" ||
+    project.value.reviewLocked
+  )
     return;
   form.name = project.value.name;
   form.slug = project.value.slug;
@@ -422,41 +407,24 @@ async function repairAssetsLink() {
       :error="requestError || error"
     />
 
-    <el-card v-if="project" shadow="never" class="details-card">
-      <el-descriptions title="Basic information" :column="2" border>
-        <el-descriptions-item label="Name">
-          {{ project.name }}
-        </el-descriptions-item>
-        <el-descriptions-item label="Status">
-          <el-tag :type="project.status === 'active' ? 'success' : 'info'">
-            {{ project.status === "active" ? "Active" : "Archived" }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="Project ID">
-          <pre>{{ project.id }}</pre>
-        </el-descriptions-item>
-        <el-descriptions-item label="Slug">
-          <pre>{{ project.slug }}</pre>
-        </el-descriptions-item>
-        <el-descriptions-item label="Members">
-          {{ project.memberCount }}
-        </el-descriptions-item>
-        <el-descriptions-item label="Tasks">
-          {{ project.completedTaskCount }} of {{ project.taskCount }} completed
-        </el-descriptions-item>
-        <el-descriptions-item label="Created">
-          {{ formatDate(project.createdAt) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="Last updated">
-          {{ formatDate(project.updatedAt) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="Description" :span="2">
-          <div class="description">
-            {{ project.description || "No project description yet." }}
-          </div>
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-card>
+    <el-alert
+      v-if="project?.reviewLocked"
+      class="review-lock-alert"
+      title="Project locked for task review"
+      description="Project changes are paused until a reviewer returns or completes the task in review."
+      type="warning"
+      :closable="false"
+      show-icon
+    >
+      <template #default>
+        <el-link
+          v-if="project.reviewTaskId"
+          :href="`/tasks/${encodeURIComponent(project.reviewTaskId)}`"
+        >
+          Open task in review
+        </el-link>
+      </template>
+    </el-alert>
 
     <el-tabs v-model="activeTab">
       <el-tab-pane label="Overview" name="overview">
@@ -489,33 +457,38 @@ async function repairAssetsLink() {
           <header class="files-tab__header">
             <div>
               <h2>Files</h2>
-              <p>Browse this project's Assets virtual file system.</p>
+              <p>Browse the assets stored for this project.</p>
             </div>
-            
           </header>
-          
-          <BackendErrorDetails v-if="filesError" :error="filesError" />
-          
-          <el-card>
-            <strong class="bold">About operations on file system</strong>
-            <p>You can only see the directory of this project's virtural file system here. To edit files, you can connect via SSH.</p>
-            <p>To connect to this project's virtual file system, do the following:</p>
-            <p class="font-mono my-2" v-if="assetsLink.manifestObjectId">ssh {{ assetsLink.manifestObjectId }}@ssh-vfs.bisz.dev</p>
-            <p>Or uploading and downloading something like this:</p>
-            <p class="font-mono my-2" v-if="assetsLink.manifestObjectId">scp {{ assetsLink.manifestObjectId }}@ssh-vfs.bisz.dev:/path/to/file ./local/path</p>
-            <p>You will be prompted to log in via DevConnect</p>
-            <p>For more, see here <el-link href="https://bisz.dev/VFS" target="_blank" underline="never">about VFS SSH</el-link></p>
-          </el-card>
 
-          <br>
-          <FileBrowser
-            :path="filesDirectory.path"
-            :entries="filesDirectory.entries"
-            :loading="filesLoading"
-            :root-label="project?.name ?? 'Files'"
-            :object-base-url="runtimeConfig.public.assetsApiUrl"
-            @navigate="loadFilesDirectory"
-          />
+          <BackendErrorDetails v-if="assetsLinkError" :error="assetsLinkError" />
+
+          <div v-loading="assetsLinkPending">
+            <el-alert
+              v-if="assetsLink.status === 'unlinked'"
+              title="No Assets project linked"
+              description="An editor can allocate an Assets project from Settings."
+              type="info"
+              :closable="false"
+              show-icon
+            />
+            <el-alert
+              v-else-if="assetsLink.status === 'missing'"
+              title="The linked Assets project is missing"
+              description="An editor can allocate a replacement Assets project from Settings."
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+            <AssetsBrowser
+              v-if="assetsLink.uid"
+              :project-uid="assetsLink.uid"
+              :show-project-filter="false"
+              :show-project-column="false"
+              empty-text="This project has no assets yet"
+              :readonly="project?.reviewLocked"
+            />
+          </div>
         </div>
       </el-tab-pane>
       <el-tab-pane label="Tasks" name="tasks">
@@ -527,9 +500,10 @@ async function repairAssetsLink() {
             </div>
             <el-button
               v-if="canCreateTask"
+              tag="a"
+              :href="`/projects/${encodeURIComponent(projectId)}/tasks/new`"
               type="primary"
               :icon="Plus"
-              @click="openTaskDialog"
             >
               Create task
             </el-button>
@@ -550,6 +524,40 @@ async function repairAssetsLink() {
             v-else
             :image-size="84"
             description="No tasks have been created for this project."
+          />
+        </div>
+      </el-tab-pane>
+      <el-tab-pane label="Members" name="members">
+        <div class="members-tab">
+          <header class="members-tab__header">
+            <div>
+              <h2>Project members</h2>
+              <p>Users who belong to this project and their roles.</p>
+            </div>
+          </header>
+          <div v-if="canManageMembers" class="member-add-row">
+            <UsersInput
+              v-model="selectedMembers"
+              :exclude-ids="existingMemberIds"
+              placeholder="Search users to add to this project"
+            />
+            <el-button
+              type="primary"
+              :loading="changingMembers"
+              :disabled="!selectedMembers.length"
+              @click="addProjectMembers"
+            >
+              Add members
+            </el-button>
+          </div>
+          <UserGroupViewer
+            :users="project?.members ?? []"
+            :roles="projectRoles"
+            :removable="canManageMembers"
+            :protected-user-ids="ownerIds"
+            :loading="changingMembers"
+            empty-text="No project members"
+            @remove="removeProjectMember"
           />
         </div>
       </el-tab-pane>
@@ -580,9 +588,8 @@ async function repairAssetsLink() {
             <section id="project-settings-assets" class="settings-section">
               <h2>Assets storage</h2>
               <p>
-                The user-facing Assets project stores versioned assets. A
-                separate machine-only Assets project stores the virtual file
-                system used by the Files tab.
+                The Assets project stores this project's files and assets. The
+                Files tab displays only assets from this project.
               </p>
               <el-divider />
 
@@ -597,36 +604,28 @@ async function repairAssetsLink() {
                     <pre v-if="assetsLink.uid">{{ assetsLink.uid }}</pre>
                     <span v-else>Not allocated</span>
                   </el-descriptions-item>
-                  <el-descriptions-item label="Machine VFS project UID">
-                    <pre v-if="assetsLink.vfsUid">{{ assetsLink.vfsUid }}</pre>
-                    <span v-else>Not allocated</span>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="VFS root manifest object ID">
-                    <pre v-if="assetsLink.manifestObjectId">{{ assetsLink.manifestObjectId }}</pre>
-                    <span v-else>Not allocated</span>
-                  </el-descriptions-item>
                 </el-descriptions>
 
                 <el-alert
                   v-if="assetsLink.status === 'missing'"
-                  title="An Assets project or VFS manifest is missing"
-                  description="An editor can allocate the missing storage. Existing healthy links are preserved."
+                  title="The linked Assets project is missing"
+                  description="An editor can allocate a replacement Assets project. Existing healthy links are preserved."
                   type="warning"
                   :closable="false"
                   show-icon
                 />
                 <el-alert
                   v-else-if="assetsLink.status === 'unavailable'"
-                  title="Assets links could not be verified"
-                  description="Repair is disabled until the Assets service can verify both linked projects."
+                  title="The Assets link could not be verified"
+                  description="Repair is disabled until the Assets service can verify the linked project."
                   type="warning"
                   :closable="false"
                   show-icon
                 />
                 <el-alert
                   v-else-if="assetsLink.status === 'unlinked'"
-                  title="No Assets projects are linked"
-                  description="An editor can allocate the versioned Assets project and machine-only VFS project now."
+                  title="No Assets project is linked"
+                  description="An editor can allocate an Assets project now."
                   type="info"
                   :closable="false"
                   show-icon
@@ -774,61 +773,6 @@ async function repairAssetsLink() {
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog
-      v-model="taskDialogOpen"
-      class="task-dialog"
-      title="Create task"
-      width="min(920px, calc(100vw - 32px))"
-      destroy-on-close
-      :close-on-click-modal="!creatingTask"
-      :close-on-press-escape="!creatingTask"
-      :show-close="!creatingTask"
-      @closed="resetTaskForm"
-    >
-      <el-form
-        ref="taskFormRef"
-        :model="taskForm"
-        :rules="taskRules"
-        label-position="top"
-        @submit.prevent="createTask"
-      >
-        <el-form-item label="Project">
-          <el-input :model-value="project?.name ?? ''" disabled />
-        </el-form-item>
-        <el-form-item label="Title" prop="title">
-          <el-input
-            v-model="taskForm.title"
-            placeholder="Refactor the authentication module"
-            maxlength="120"
-            show-word-limit
-            autofocus
-          />
-          <span class="text-(--el-text-color-secondary)">Good titles have subject and action well-defined. See <el-link underline="never" href="https://bisz.dev/TaskTitleNaming" target="_blank">task title naming convention</el-link>.</span>
-        </el-form-item>
-        <el-form-item label="Description" prop="description">
-          <MarkdownEditor v-model="taskForm.description" :maxlength="50_000" />
-        </el-form-item>
-        <el-form-item label="Due date" prop="dueDate">
-          <el-date-picker
-            v-model="taskForm.dueDate"
-            type="date"
-            value-format="YYYY-MM-DD"
-            :disabled-date="disablePastDueDates"
-            placeholder="No due date"
-            clearable
-          />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button :disabled="creatingTask" @click="taskDialogOpen = false">
-          Cancel
-        </el-button>
-        <el-button type="primary" :loading="creatingTask" @click="createTask">
-          Create task
-        </el-button>
-      </template>
-    </el-dialog>
   </section>
 </template>
 
@@ -852,12 +796,8 @@ pre {
   font: 12px/1.5 var(--el-font-family);
 }
 
-.details-card {
+.review-lock-alert {
   margin-bottom: 18px;
-}
-
-.description {
-  white-space: pre-wrap;
 }
 
 .repository-overview {
@@ -866,12 +806,14 @@ pre {
 }
 
 .tasks-tab,
-.files-tab {
+.files-tab,
+.members-tab {
   padding-top: 8px;
 }
 
 .tasks-tab__header,
-.files-tab__header {
+.files-tab__header,
+.members-tab__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -882,12 +824,15 @@ pre {
 .tasks-tab__header h2,
 .tasks-tab__header p,
 .files-tab__header h2,
-.files-tab__header p {
+.files-tab__header p,
+.members-tab__header h2,
+.members-tab__header p {
   margin: 0;
 }
 
 .tasks-tab__header p,
-.files-tab__header p {
+.files-tab__header p,
+.members-tab__header p {
   margin-top: 5px;
   color: var(--el-text-color-secondary);
 }
@@ -897,21 +842,12 @@ pre {
   gap: 8px;
 }
 
-:deep(.el-dialog .el-date-editor.el-input) {
-  width: 100%;
-}
-
-:deep(.task-dialog) {
-  display: flex;
-  max-height: calc(100vh - 32px);
-  flex-direction: column;
-  margin-top: 16px;
-  margin-bottom: 16px;
-}
-
-:deep(.task-dialog .el-dialog__body) {
-  min-height: 0;
-  overflow-y: auto;
+.member-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .repository-overview-header {
@@ -1008,13 +944,13 @@ pre {
     flex-direction: column;
   }
 
+  .member-add-row {
+    grid-template-columns: 1fr;
+  }
+
   .tasks-tab__header {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .details-card :deep(.el-descriptions__body) {
-    overflow-x: auto;
   }
 
   .settings-layout {

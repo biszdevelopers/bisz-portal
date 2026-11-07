@@ -10,6 +10,7 @@ import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import {
   PortalPermissions,
   projectCreationAssetPermissionValues,
+  defaultProjectMemberPermissions,
   projectPermissionValues,
 } from "~/shared/permissions";
 import { projectCreateSchema } from "~/shared/contracts";
@@ -19,12 +20,12 @@ import { projectMembers, projects } from "~/server/database/schema";
 import { getProjectDetail, slugify } from "~/server/services/projects";
 import {
   AssetsProjectRequestError,
-  assetsVfsProjectInput,
   cleanupAssetsProject,
   createAssetsProject,
-  createAssetsProjectFilesystem,
   type AssetsProject,
 } from "~/server/utils/assets-projects";
+import { findBasisUser } from "~/server/utils/basis-users";
+import { requireSameOrigin } from "~/server/utils/basis-applications";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -32,6 +33,8 @@ export default defineEventHandler(async (event) => {
     PortalPermissions.BiszPortal.Projects.create,
   );
   if (auth instanceof APIError) return apiResult(event, auth);
+  const originError = requireSameOrigin(event);
+  if (originError) return apiResult(event, originError);
 
   const body = await parseBody(event, projectCreateSchema);
   if (body instanceof APIError) return apiResult(event, body);
@@ -46,6 +49,20 @@ export default defineEventHandler(async (event) => {
         "invalid_request",
       ),
     );
+
+  const memberIds = body.memberIds.filter((userId) => userId !== auth.user.id);
+  const memberUsers = await Promise.all(memberIds.map(findBasisUser));
+  if (memberUsers.some((user) => !user)) {
+    return apiResult(
+      event,
+      new APIError(
+        "invalid_member",
+        "One or more selected users do not exist or are disabled",
+        400,
+        "invalid_member",
+      ),
+    );
+  }
 
   const [existing] = await useDatabase()
     .select({ id: projects.id })
@@ -93,7 +110,7 @@ export default defineEventHandler(async (event) => {
       event,
       new APIError(
         "forbidden",
-        "Assets.Projects.create and Assets.Assets.create are required to create a project",
+        "Assets.Projects.create is required to create a project",
         403,
         "forbidden",
       ),
@@ -122,67 +139,6 @@ export default defineEventHandler(async (event) => {
     throw error;
   }
 
-  let assetsVfsProject: AssetsProject;
-  try {
-    assetsVfsProject = await createAssetsProject(
-      assetToken,
-      assetsVfsProjectInput({ id: projectId, name: body.name }),
-    );
-  } catch (error) {
-    await cleanupAssetsProject(
-      assetToken,
-      assetsProject.uid,
-      "machine VFS Assets project allocation failed",
-    );
-    if (error instanceof AssetsProjectRequestError) {
-      return apiResult(
-        event,
-        new APIError(
-          "assets_project_creation_failed",
-          error.message,
-          error.status,
-          "assets_project_creation_failed",
-        ),
-      );
-    }
-    throw error;
-  }
-
-  async function cleanupAllocatedAssetsProjects(reason: string) {
-    await Promise.all([
-      cleanupAssetsProject(assetsAccessTokenValue, assetsProject.uid, reason),
-      cleanupAssetsProject(assetsAccessTokenValue, assetsVfsProject.uid, reason),
-    ]);
-  }
-
-  let manifestObjectId: string;
-  try {
-    manifestObjectId = await createAssetsProjectFilesystem(
-      assetToken,
-      assetsVfsProject.uid,
-      {
-        id: projectId,
-        name: body.name,
-        slug,
-        description: body.description,
-      },
-    );
-  } catch (error) {
-    await cleanupAllocatedAssetsProjects("Assets VFS root directory allocation failed");
-    if (error instanceof AssetsProjectRequestError) {
-      return apiResult(
-        event,
-        new APIError(
-          "assets_vfs_creation_failed",
-          error.message,
-          error.status,
-          "assets_vfs_creation_failed",
-        ),
-      );
-    }
-    throw error;
-  }
-
   let project: typeof projects.$inferSelect;
   try {
     project = await useDatabase().transaction(async (transaction) => {
@@ -195,8 +151,6 @@ export default defineEventHandler(async (event) => {
           description: body.description,
           creatorId: auth.user.id,
           assetsProjectUid: assetsProject.uid,
-          assetsVfsProjectUid: assetsVfsProject.uid,
-          assetsManifestObjectId: manifestObjectId,
         })
         .returning();
       if (!created) throw new Error("Project creation failed");
@@ -206,10 +160,24 @@ export default defineEventHandler(async (event) => {
         role: "owner",
         permissions: [...projectPermissionValues],
       });
+      if (memberIds.length) {
+        await transaction.insert(projectMembers).values(
+          memberIds.map((userId) => ({
+            projectId: created.id,
+            userId,
+            role: "member" as const,
+            permissions: [...defaultProjectMemberPermissions],
+          })),
+        );
+      }
       return created;
     });
   } catch (error) {
-    await cleanupAllocatedAssetsProjects("portal project persistence failed");
+    await cleanupAssetsProject(
+      assetsAccessTokenValue,
+      assetsProject.uid,
+      "portal project persistence failed",
+    );
     if (
       typeof error === "object" &&
       error &&

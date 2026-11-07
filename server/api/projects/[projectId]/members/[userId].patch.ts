@@ -11,6 +11,7 @@ import { parseBody } from "~/server/utils/request";
 import { useDatabase } from "~/server/database/client";
 import { projectMembers, projects } from "~/server/database/schema";
 import { getProjectDetail } from "~/server/services/projects";
+import { requireSameOrigin } from "~/server/utils/basis-applications";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -18,6 +19,8 @@ export default defineEventHandler(async (event) => {
     PortalPermissions.BiszPortal.ProjectMembers.manage,
   );
   if (auth instanceof APIError) return apiResult(event, auth);
+  const originError = requireSameOrigin(event);
+  if (originError) return apiResult(event, originError);
   const projectId = getRouterParam(event, "projectId") ?? "";
   const userId = getRouterParam(event, "userId") ?? "";
   const access = await requireProjectCapability(

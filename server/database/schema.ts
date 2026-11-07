@@ -21,7 +21,7 @@ export const projectMemberRole = pgEnum("project_member_role", [
 ]);
 export const taskStatus = pgEnum("task_status", [
   "todo",
-  "in_progress",
+  "in_review",
   "done",
 ]);
 export const tagColor = pgEnum("tag_color", [
@@ -86,8 +86,6 @@ export const projects = pgTable("projects", {
   description: text("description").notNull().default(""),
   githubRepository: text("github_repository"),
   assetsProjectUid: text("assets_project_uid").unique(),
-  assetsVfsProjectUid: text("assets_vfs_project_uid").unique(),
-  assetsManifestObjectId: text("assets_manifest_object_id").unique(),
   status: projectStatus("status").notNull().default("active"),
   creatorId: uuid("creator_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -133,6 +131,7 @@ export const tasks = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
+    creatorId: uuid("creator_id").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     status: taskStatus("status").notNull().default("todo"),
@@ -146,6 +145,39 @@ export const tasks = pgTable(
   },
   (table) => [
     index("tasks_project_status_idx").on(table.projectId, table.status),
+  ],
+);
+
+export const taskTags = pgTable(
+  "task_tags",
+  {
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    tagName: text("tag_name")
+      .notNull()
+      .references(() => tags.name, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.taskId, table.tagName] }),
+    index("task_tags_tag_name_idx").on(table.tagName),
+  ],
+);
+
+export const taskMembers = pgTable(
+  "task_members",
+  {
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.taskId, table.userId] }),
+    index("task_members_user_idx").on(table.userId),
   ],
 );
 

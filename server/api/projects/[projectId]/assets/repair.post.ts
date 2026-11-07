@@ -12,22 +12,15 @@ import {
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import {
   AssetsProjectRequestError,
-  assetsVfsProjectInput,
-  assetsManifestExists,
   assetsProjectExists,
   cleanupAssetsProject,
   createAssetsProject,
-  createAssetsProjectFilesystem,
   type AssetsProject,
 } from "~/server/utils/assets-projects";
 import { useDatabase } from "~/server/database/client";
 import { projects } from "~/server/database/schema";
 import { getProjectDetail } from "~/server/services/projects";
-import {
-  AssetsPermissions,
-  PortalPermissions,
-  projectCreationAssetPermissionValues,
-} from "~/shared/permissions";
+import { AssetsPermissions, PortalPermissions } from "~/shared/permissions";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -63,52 +56,26 @@ export default defineEventHandler(async (event) => {
     );
   }
 
-  const [genericProjectExists, vfsProjectExists] = await Promise.all([
-    project.assetsProjectUid
-      ? assetsProjectExists(project.assetsProjectUid)
-      : Promise.resolve(false),
-    project.assetsVfsProjectUid
-      ? assetsProjectExists(project.assetsVfsProjectUid)
-      : Promise.resolve(false),
-  ]);
-  if (genericProjectExists === null || vfsProjectExists === null) {
+  const assetProjectExists = project.assetsProjectUid
+    ? await assetsProjectExists(project.assetsProjectUid)
+    : false;
+  if (assetProjectExists === null) {
     return apiResult(
       event,
       new APIError(
         "assets_unavailable",
-        "The Assets projects could not be verified, so they were not replaced",
+        "The Assets project could not be verified, so it was not replaced",
         502,
         "assets_unavailable",
       ),
     );
   }
-
-  const manifestExists =
-    vfsProjectExists &&
-    project.assetsVfsProjectUid &&
-    project.assetsManifestObjectId
-      ? await assetsManifestExists(
-          project.assetsVfsProjectUid,
-          project.assetsManifestObjectId,
-        )
-      : false;
-  if (manifestExists === null) {
-    return apiResult(
-      event,
-      new APIError(
-        "assets_unavailable",
-        "The Assets VFS manifest could not be verified, so it was not replaced",
-        502,
-        "assets_unavailable",
-      ),
-    );
-  }
-  if (genericProjectExists && vfsProjectExists && manifestExists) {
+  if (assetProjectExists) {
     return apiResult(
       event,
       new APIError(
         "conflict",
-        "This project already has healthy Assets and VFS links",
+        "This project already has a healthy Assets project link",
         409,
         "conflict",
       ),
@@ -133,55 +100,26 @@ export default defineEventHandler(async (event) => {
     );
   }
 
-  const needsProjectAllocation = !genericProjectExists || !vfsProjectExists;
-  const requiredPermissions = needsProjectAllocation
-    ? projectCreationAssetPermissionValues
-    : [AssetsPermissions.Assets.Assets.create];
   const permissions = new DelegatedPermissionSet(assetClaims.permissions);
-  if (!requiredPermissions.every((permission) => permissions.has(permission))) {
+  if (!permissions.has(AssetsPermissions.Assets.Projects.create)) {
     return apiResult(
       event,
       new APIError(
         "forbidden",
-        needsProjectAllocation
-          ? "Assets.Projects.create and Assets.Assets.create are required to repair the Assets links"
-          : "Assets.Assets.create is required to repair the VFS root directory",
+        "Assets.Projects.create is required to repair the Assets link",
         403,
         "forbidden",
       ),
     );
   }
 
-  const allocatedProjects: AssetsProject[] = [];
-  async function cleanupAllocatedProjects(reason: string) {
-    await Promise.all(
-      allocatedProjects.map((allocated) =>
-        cleanupAssetsProject(assetsAccessTokenValue, allocated.uid, reason),
-      ),
-    );
-  }
-
-  let assetsProjectUid = project.assetsProjectUid;
-  let assetsVfsProjectUid = project.assetsVfsProjectUid;
+  let allocatedAssetsProject: AssetsProject;
   try {
-    if (!genericProjectExists) {
-      const allocated = await createAssetsProject(assetToken, {
-        name: project.name,
-        description: project.description,
-      });
-      allocatedProjects.push(allocated);
-      assetsProjectUid = allocated.uid;
-    }
-    if (!vfsProjectExists) {
-      const allocated = await createAssetsProject(
-        assetToken,
-        assetsVfsProjectInput(project),
-      );
-      allocatedProjects.push(allocated);
-      assetsVfsProjectUid = allocated.uid;
-    }
+    allocatedAssetsProject = await createAssetsProject(assetToken, {
+      name: project.name,
+      description: project.description,
+    });
   } catch (error) {
-    await cleanupAllocatedProjects("Assets link repair project allocation failed");
     if (error instanceof AssetsProjectRequestError) {
       return apiResult(
         event,
@@ -195,54 +133,14 @@ export default defineEventHandler(async (event) => {
     }
     throw error;
   }
-  if (!assetsProjectUid || !assetsVfsProjectUid) {
-    throw new Error("Assets project allocation failed");
-  }
-
-  let manifestObjectId = project.assetsManifestObjectId;
-  let allocatedManifest = false;
-  if (!manifestExists) {
-    try {
-      manifestObjectId = await createAssetsProjectFilesystem(
-        assetToken,
-        assetsVfsProjectUid,
-        {
-          id: project.id,
-          name: project.name,
-          slug: project.slug,
-          description: project.description,
-        },
-      );
-      allocatedManifest = true;
-    } catch (error) {
-      await cleanupAllocatedProjects("Assets VFS root directory repair failed");
-      if (error instanceof AssetsProjectRequestError) {
-        return apiResult(
-          event,
-          new APIError(
-            "assets_vfs_creation_failed",
-            error.message,
-            error.status,
-            "assets_vfs_creation_failed",
-          ),
-        );
-      }
-      throw error;
-    }
-  }
-  if (!manifestObjectId) throw new Error("Assets VFS allocation failed");
 
   const previousAssetsUid = project.assetsProjectUid;
-  const previousVfsUid = project.assetsVfsProjectUid;
-  const previousManifestId = project.assetsManifestObjectId;
   let updated: { id: string } | undefined;
   try {
     [updated] = await useDatabase()
       .update(projects)
       .set({
-        assetsProjectUid,
-        assetsVfsProjectUid,
-        assetsManifestObjectId: manifestObjectId,
+        assetsProjectUid: allocatedAssetsProject.uid,
         updatedAt: new Date(),
       })
       .where(
@@ -251,35 +149,29 @@ export default defineEventHandler(async (event) => {
           previousAssetsUid === null
             ? isNull(projects.assetsProjectUid)
             : eq(projects.assetsProjectUid, previousAssetsUid),
-          previousVfsUid === null
-            ? isNull(projects.assetsVfsProjectUid)
-            : eq(projects.assetsVfsProjectUid, previousVfsUid),
-          previousManifestId === null
-            ? isNull(projects.assetsManifestObjectId)
-            : eq(projects.assetsManifestObjectId, previousManifestId),
         ),
       )
       .returning({ id: projects.id });
   } catch (error) {
-    await cleanupAllocatedProjects("Assets link repair persistence failed");
+    await cleanupAssetsProject(
+      assetsAccessTokenValue,
+      allocatedAssetsProject.uid,
+      "Assets link repair persistence failed",
+    );
     throw error;
   }
 
   if (!updated) {
-    await cleanupAllocatedProjects(
+    await cleanupAssetsProject(
+      assetsAccessTokenValue,
+      allocatedAssetsProject.uid,
       "another Assets link repair updated the portal project first",
     );
-    if (allocatedManifest && allocatedProjects.length === 0) {
-      console.error("Orphaned Assets VFS root manifest after concurrent repair", {
-        assetsVfsProjectUid,
-        manifestObjectId,
-      });
-    }
     return apiResult(
       event,
       new APIError(
         "conflict",
-        "The Assets links changed while they were being repaired",
+        "The Assets link changed while it was being repaired",
         409,
         "conflict",
       ),
@@ -290,9 +182,7 @@ export default defineEventHandler(async (event) => {
     event,
     new APIResponse({
       assets: {
-        uid: assetsProjectUid,
-        vfsUid: assetsVfsProjectUid,
-        manifestObjectId,
+        uid: allocatedAssetsProject.uid,
         status: "linked",
       },
       project: await getProjectDetail(auth, projectId),

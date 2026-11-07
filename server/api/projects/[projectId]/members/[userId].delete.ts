@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { apiResult } from "~/server/utils/api-response";
 import {
   requirePortalPermission,
@@ -7,8 +7,9 @@ import {
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import { PortalPermissions } from "~/shared/permissions";
 import { useDatabase } from "~/server/database/client";
-import { projectMembers, projects } from "~/server/database/schema";
+import { projectMembers, projects, taskMembers, tasks } from "~/server/database/schema";
 import { getProjectDetail } from "~/server/services/projects";
+import { requireSameOrigin } from "~/server/utils/basis-applications";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -16,6 +17,8 @@ export default defineEventHandler(async (event) => {
     PortalPermissions.BiszPortal.ProjectMembers.manage,
   );
   if (auth instanceof APIError) return apiResult(event, auth);
+  const originError = requireSameOrigin(event);
+  if (originError) return apiResult(event, originError);
   const projectId = getRouterParam(event, "projectId") ?? "";
   const userId = getRouterParam(event, "userId") ?? "";
   const access = await requireProjectCapability(
@@ -51,6 +54,20 @@ export default defineEventHandler(async (event) => {
       ),
     );
   await db.transaction(async (transaction) => {
+    const projectTasks = await transaction
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId));
+    if (projectTasks.length) {
+      await transaction
+        .delete(taskMembers)
+        .where(
+          and(
+            eq(taskMembers.userId, userId),
+            inArray(taskMembers.taskId, projectTasks.map((task) => task.id)),
+          ),
+        );
+    }
     await transaction
       .delete(projectMembers)
       .where(

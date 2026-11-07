@@ -4,7 +4,7 @@ import {
 } from "@basis/schema/permissions";
 import type { H3Event } from "h3";
 import { and, eq } from "drizzle-orm";
-import { projectMembers } from "~/server/database/schema";
+import { projectMembers, projects, tasks } from "~/server/database/schema";
 import { useDatabase } from "~/server/database/client";
 import {
   authenticateRequest,
@@ -143,6 +143,7 @@ export async function requireProjectCapability(
   auth: AuthenticatedRequest,
   projectId: string,
   capability: keyof ProjectCapabilities,
+  options: { allowReviewLocked?: boolean } = {},
 ) {
   const membership = await findMembership(projectId, auth.user.id);
   if (!membership)
@@ -157,6 +158,48 @@ export async function requireProjectCapability(
       403,
       "forbidden",
     );
+  }
+  const mutationCapabilities: (keyof ProjectCapabilities)[] = [
+    "update",
+    "archive",
+    "manageMembers",
+    "createTasks",
+    "updateTasks",
+    "writeIncidents",
+  ];
+  if (
+    !options.allowReviewLocked &&
+    mutationCapabilities.includes(capability)
+  ) {
+    const [project] = await useDatabase()
+      .select({ status: projects.status })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!project) {
+      return new APIError("not_found", "Project not found", 404, "not_found");
+    }
+    if (project.status === "archived") {
+      return new APIError(
+        "project_archived",
+        "Archived projects cannot be changed",
+        409,
+        "project_archived",
+      );
+    }
+    const [reviewTask] = await useDatabase()
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(eq(tasks.projectId, projectId), eq(tasks.status, "in_review")))
+      .limit(1);
+    if (reviewTask) {
+      return new APIError(
+        "project_in_review",
+        "This project is locked while a task is in review",
+        409,
+        "project_in_review",
+      );
+    }
   }
   return { membership, capabilities };
 }

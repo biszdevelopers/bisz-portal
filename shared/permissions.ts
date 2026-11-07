@@ -31,7 +31,6 @@ export const AssetsPermissions = definePermissionTree({
 });
 
 export const projectCreationAssetPermissionValues = [
-  AssetsPermissions.Assets.Assets.create,
   AssetsPermissions.Assets.Projects.create,
 ] as const;
 
@@ -49,6 +48,11 @@ export const ProjectPermissions = {
 export type ProjectPermission =
   (typeof ProjectPermissions)[keyof typeof ProjectPermissions];
 export const projectPermissionValues = Object.values(ProjectPermissions);
+export const defaultProjectMemberPermissions: ProjectPermission[] = [
+  ProjectPermissions.projectRead,
+  ProjectPermissions.tasksRead,
+  ProjectPermissions.incidentsRead,
+];
 export const portalPermissionValues = flattenPermissions(
   PortalPermissions,
 ) as Permission[];

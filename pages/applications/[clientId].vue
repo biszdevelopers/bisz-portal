@@ -7,9 +7,9 @@ import {
   Refresh,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { portalLocale } from "~/shared/locale";
 import type {
   ApplicationDetail,
-  ApplicationOwnerView,
   ApplicationResourceView,
   ApplicationRole,
 } from "~/shared/contracts";
@@ -23,7 +23,18 @@ const { data, pending, error, refresh } = await useFetch<{
   headers,
 });
 const application = computed(() => data.value?.application);
-const activeTab = ref("owners");
+const applicationRoles = [
+  { label: "Admin", value: "role.ADMIN" },
+  { label: "General", value: "role.GENERAL" },
+];
+const activeTab = useHashTab("owners", [
+  "owners",
+  "resources",
+  "scopes",
+  "permissions",
+  "redirects",
+  "generator",
+]);
 const saving = ref(false);
 const requestError = shallowRef<unknown>(null);
 const settingsDialog = ref(false);
@@ -240,16 +251,16 @@ async function addOwner() {
   }
 }
 
-async function changeOwnerRole(owner: any, role: ApplicationRole) {
+async function changeOwnerRole(owner: { userId: string }, role: string) {
   if (
     await mutate(`/owners/${encodeURIComponent(owner.userId)}`, "PATCH", {
-      role,
+      role: role as ApplicationRole,
     })
   )
     ElMessage.success("Role updated");
 }
 
-async function removeOwner(owner: any) {
+async function removeOwner(owner: { userId: string; displayName: string }) {
   await ElMessageBox.confirm(
     `Remove ${owner.displayName} from this application?`,
     "Remove member",
@@ -546,7 +557,7 @@ onMounted(() => void refreshGenerator());
               : "None"
           }}</el-descriptions-item>
           <el-descriptions-item label="Updated">{{
-            new Date(application.updatedAt).toLocaleString()
+            new Date(application.updatedAt).toLocaleString(portalLocale)
           }}</el-descriptions-item>
         </el-descriptions>
       </el-card>
@@ -570,43 +581,16 @@ onMounted(() => void refreshGenerator());
                 ></el-tooltip
               >
             </div>
-            <el-table :data="application.owners">
-              <el-table-column label="User" min-width="230"
-                ><template #default="{ row }"
-                  ><div class="identity">
-                    <el-avatar :src="row.image || undefined">{{
-                      row.displayName.slice(0, 2).toUpperCase()
-                    }}</el-avatar
-                    ><span>{{ row.displayName }}</span>
-                  </div></template
-                ></el-table-column
-              >
-              <el-table-column prop="userId" label="User ID" min-width="330"
-                ><template #default="{ row }">
-                  <pre>{{ row.userId }}</pre>
-                </template></el-table-column
-              >
-              <el-table-column label="Role" width="180"
-                ><template #default="{ row }"
-                  ><el-select
-                    :model-value="row.role"
-                    :disabled="!application.capabilities.manageOwners"
-                    @change="changeOwnerRole(row, $event)"
-                    ><el-option label="Admin" value="role.ADMIN" /><el-option
-                      label="General"
-                      value="role.GENERAL" /></el-select></template
-              ></el-table-column>
-              <el-table-column label="" width="70"
-                ><template #default="{ row }"
-                  ><el-button
-                    v-if="application.capabilities.manageOwners"
-                    text
-                    type="danger"
-                    :icon="Delete"
-                    aria-label="Remove member"
-                    @click="removeOwner(row)" /></template
-              ></el-table-column>
-            </el-table>
+            <UserGroupViewer
+              :users="application.owners"
+              :roles="applicationRoles"
+              :editable-roles="application.capabilities.manageOwners"
+              :removable="application.capabilities.manageOwners"
+              :loading="saving"
+              empty-text="No application owners"
+              @update-role="changeOwnerRole"
+              @remove="removeOwner"
+            />
           </el-tab-pane>
 
           <el-tab-pane label="Resources" name="resources">

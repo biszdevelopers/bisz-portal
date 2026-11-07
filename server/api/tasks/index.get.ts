@@ -10,6 +10,8 @@ import { PortalPermissions } from "~/shared/permissions";
 import { useDatabase } from "~/server/database/client";
 import { projectMembers, projects, tasks } from "~/server/database/schema";
 import type { TaskView } from "~/shared/contracts";
+import { taskTagViewsByTaskId } from "~/server/services/task-tags";
+import { taskMemberViewsByTaskId } from "~/server/services/task-members";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -20,8 +22,8 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const projectId =
     typeof query.projectId === "string" ? query.projectId : null;
-  const status = ["todo", "in_progress", "done"].includes(String(query.status))
-    ? (query.status as "todo" | "in_progress" | "done")
+  const status = ["todo", "in_review", "done"].includes(String(query.status))
+    ? (query.status as "todo" | "in_review" | "done")
     : null;
   if (projectId) {
     const access = await requireProjectCapability(auth, projectId, "readTasks");
@@ -47,14 +49,23 @@ export default defineEventHandler(async (event) => {
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
     .where(and(...conditions));
+  const tagsByTaskId = await taskTagViewsByTaskId(
+    rows.map(({ task }) => task.id),
+  );
+  const membersByTaskId = await taskMemberViewsByTaskId(
+    rows.map(({ task }) => task.id),
+  );
   const result: TaskView[] = rows.map(({ task, projectName }) => ({
     id: task.id,
     projectId: task.projectId,
+    creatorId: task.creatorId,
     projectName,
     title: task.title,
     description: task.description,
     status: task.status,
     dueDate: task.dueDate,
+    tags: tagsByTaskId.get(task.id) ?? [],
+    members: membersByTaskId.get(task.id) ?? [],
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
   }));

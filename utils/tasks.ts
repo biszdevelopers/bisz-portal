@@ -1,15 +1,31 @@
+import { portalLocale } from "~/shared/locale";
+import type { TaskView } from "~/shared/contracts";
+
+export function taskMatchesOverview(
+  task: Pick<TaskView, "creatorId" | "members" | "projectId" | "status">,
+  userId: string | undefined,
+  status: string,
+  projectId = "",
+) {
+  if (!userId || (projectId && task.projectId !== projectId)) return false;
+  const assigned = task.members.some((member) => member.userId === userId);
+  if (status === "all") return assigned || task.creatorId === userId;
+  return task.status === status && assigned;
+}
+
 export function formatTaskDueDate(value: string | null) {
   if (!value) return "No due date";
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return "Invalid due date";
 
   const [, year, month, day] = match;
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+  return new Intl.DateTimeFormat(portalLocale, { dateStyle: "medium" }).format(
     new Date(Number(year), Number(month) - 1, Number(day)),
   );
 }
 
 export function taskStatusLabel(value: string) {
+  if (value === "in_review") return "in review";
   return value.replaceAll("_", " ");
 }
 

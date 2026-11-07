@@ -31,6 +31,7 @@ describe.skipIf(!hasDatabase)("project task visibility", () => {
         });
         await transaction.insert(tasks).values({
           projectId,
+          creatorId: userId,
           title: "Hidden task",
           description: "This description must not be returned.",
         });

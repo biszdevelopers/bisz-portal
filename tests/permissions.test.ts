@@ -41,9 +41,8 @@ function auth(permissions: string[]): AuthenticatedRequest {
 }
 
 describe("portal and project authorization", () => {
-  test("requires project and object creation for VFS-backed allocation", () => {
+  test("requires project creation for Assets allocation", () => {
     expect(projectCreationAssetPermissionValues).toEqual([
-      AssetsPermissions.Assets.Assets.create,
       AssetsPermissions.Assets.Projects.create,
     ]);
     expect(
@@ -233,6 +232,10 @@ describe("request validation", () => {
     expect(userListQuerySchema.safeParse({ pageSize: "101" }).success).toBe(
       false,
     );
+    expect(
+      userListQuerySchema.parse({ q: "  alice  ", projectId: crypto.randomUUID() }).q,
+    ).toBe("alice");
+    expect(userListQuerySchema.safeParse({ projectId: "invalid" }).success).toBe(false);
   });
 
   test("accepts project Markdown and rejects invalid slugs", () => {
@@ -268,10 +271,18 @@ describe("request validation", () => {
       title: "Ship task flow",
       description: "# Details",
       dueDate: futureDueDate,
+      tags: [],
+      memberIds: [],
     });
     expect(
       taskCreateSchema.parse({ title: "No due date", dueDate: null }),
-    ).toEqual({ title: "No due date", description: "", dueDate: null });
+    ).toEqual({
+      title: "No due date",
+      description: "",
+      dueDate: null,
+      tags: [],
+      memberIds: [],
+    });
     expect(taskCreateSchema.safeParse({ title: "   " }).success).toBe(false);
     expect(
       taskCreateSchema.safeParse({
@@ -304,6 +315,32 @@ describe("request validation", () => {
     expect(
       taskCreateSchema.safeParse({ title: "Task", projectId: crypto.randomUUID() })
         .success,
+    ).toBe(false);
+    const memberId = crypto.randomUUID();
+    expect(
+      taskCreateSchema.parse({ title: "Assigned", memberIds: [memberId] }).memberIds,
+    ).toEqual([memberId]);
+    expect(
+      taskCreateSchema.safeParse({ title: "Assigned", memberIds: [memberId, memberId] })
+        .success,
+    ).toBe(false);
+    expect(
+      taskCreateSchema.parse({
+        title: "Tagged task",
+        tags: ["  Frontend  ", "BUG:UI"],
+      }).tags,
+    ).toEqual(["frontend", "bug:ui"]);
+    expect(
+      taskCreateSchema.safeParse({
+        title: "Duplicate tags",
+        tags: ["frontend", "FRONTEND"],
+      }).success,
+    ).toBe(false);
+    expect(
+      taskCreateSchema.safeParse({
+        title: "Too many tags",
+        tags: Array.from({ length: 21 }, (_, index) => `tag-${index}`),
+      }).success,
     ).toBe(false);
   });
 

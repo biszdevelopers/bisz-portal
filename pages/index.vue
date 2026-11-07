@@ -1,23 +1,27 @@
 <script setup lang="ts">
-type User = {
-  id: string;
-  name: string | null;
-};
+import {
+  Collection,
+  Connection,
+  DocumentChecked,
+  FolderOpened,
+  Lock,
+  Right,
+  User,
+} from "@element-plus/icons-vue";
+import { NuxtLink } from "#components";
 
-type MeResponse = {
-  user?: User;
-};
-
-const headers = useRequestHeaders(["cookie"]);
-const { data, error, status } = await useFetch<MeResponse>("/api/me", {
-  headers,
+const { capabilities, data, error, pending } = usePortalAccess();
+const accessError = computed(() =>
+  error.value?.statusCode === 401 ? undefined : error.value,
+);
+const needsSignIn = computed(
+  () => !pending.value && !data.value && !accessError.value,
+);
+const accessLabel = computed(() => {
+  if (pending.value) return "Checking access";
+  if (accessError.value) return "Access unavailable";
+  return needsSignIn.value ? "Sign-in required" : "Permission required";
 });
-
-const user = computed(() => data.value?.user);
-
-async function signInWithDevConnect() {
-  await navigateTo("/api/auth/callback/basis-auth", { external: true });
-}
 
 enum TimeOfDay {
   Morning = "MORNING",
@@ -28,82 +32,246 @@ enum TimeOfDay {
 function getCurrentTimeOfDay(date: Date = new Date()): TimeOfDay {
   const hours = date.getHours();
 
-  if (hours >= 5 && hours < 12) {
-    return TimeOfDay.Morning;
-  }
-
-  if (hours >= 12 && hours < 17) {
-    return TimeOfDay.Afternoon;
-  }
-
-  // Covers 17:00 through 04:59
+  if (hours >= 5 && hours < 12) return TimeOfDay.Morning;
+  if (hours >= 12 && hours < 17) return TimeOfDay.Afternoon;
   return TimeOfDay.Evening;
 }
 
-const timeOfDay = computed(() => getCurrentTimeOfDay());
+const greeting = computed(() => {
+  const name = data.value?.user.name ?? "User";
+
+  if (getCurrentTimeOfDay() === TimeOfDay.Morning) {
+    return `Good morning! ${name}`;
+  }
+  if (getCurrentTimeOfDay() === TimeOfDay.Afternoon) {
+    return `Good afternoon! ${name}`;
+  }
+  return `Good evening! ${name}`;
+});
+
+const tools = computed(() => [
+  {
+    title: "Projects",
+    to: "/projects",
+    icon: FolderOpened,
+    description: "Browse projects, team members, and linked resources.",
+    available: capabilities.value.projectsRead,
+  },
+  {
+    title: "Tasks",
+    to: "/tasks",
+    icon: DocumentChecked,
+    description: "Review assignments, due dates, and progress across projects.",
+    available: capabilities.value.tasksRead,
+  },
+  {
+    title: "Assets",
+    to: "/assets",
+    icon: Collection,
+    description: "Browse public assets and manage shared files in DevConnect Assets.",
+    available: true,
+  },
+]);
+
+const adminLinks = computed(() =>
+  [
+    {
+      label: "Users",
+      to: "/users",
+      icon: User,
+      available: capabilities.value.usersRead,
+    },
+    {
+      label: "Applications",
+      to: "/applications",
+      icon: Connection,
+      available: capabilities.value.applicationsRead,
+    },
+  ].filter((link) => link.available),
+);
 </script>
 
 <template>
-  <section>
+  <section class="overview" aria-labelledby="overview-title">
     <header class="page-header">
-      <h1 v-if="user">
-        <h1 v-if="timeOfDay == TimeOfDay.Morning">
-          Good morning! {{ user.name ?? "User" }}
-        </h1>
-        <h1 v-else-if="timeOfDay == TimeOfDay.Afternoon">
-          Good afternoon! {{ user.name ?? "User" }}
-        </h1>
-        <h1 v-else>Good evening! {{ user.name ?? "User" }}</h1>
-      </h1>
-      <h1 v-else>Overview</h1>
-      <p v-if="user">Your Basis profile and workspace details.</p>
-      <p v-else>Your Basis workspace at a glance.</p>
+      <h1 id="overview-title">{{ data?.user ? greeting : "Overview" }}</h1>
+      <p>
+        Manage projects, review assignments, and find shared assets across your
+        teams.
+      </p>
     </header>
 
-    <el-card v-if="status === 'pending'" class="profile-card" shadow="never">
-      <el-skeleton :rows="2" animated />
-    </el-card>
+    <BackendErrorDetails
+      v-if="accessError"
+      :error="accessError"
+      fallback-description="Unable to load workspace access."
+    />
 
-    <el-card v-else-if="user" class="profile-card" shadow="never">
-      <template #header>Current signed-in user</template>
-      <el-descriptions :column="1" border>
-        <el-descriptions-item label="User ID">{{
-          user.id
-        }}</el-descriptions-item>
-      </el-descriptions>
-    </el-card>
+    <section class="workspace-tools" aria-labelledby="workspace-tools-title">
+      <h2 id="workspace-tools-title">Workspace tools</h2>
+      <ul class="workspace-tools__grid">
+        <li v-for="tool in tools" :key="tool.to">
+          <component
+            :is="tool.available ? NuxtLink : 'div'"
+            :to="tool.available ? tool.to : undefined"
+            class="workspace-tool"
+          >
+            <div class="workspace-tool__header">
+              <el-icon class="workspace-tool__icon" aria-hidden="true">
+                <component :is="tool.icon" />
+              </el-icon>
+              <el-icon v-if="tool.available" aria-hidden="true">
+                <Right />
+              </el-icon>
+              <span v-else class="workspace-tool__access">
+                <el-icon aria-hidden="true"><Lock /></el-icon>
+                {{ accessLabel }}
+              </span>
+            </div>
+            <h3>{{ tool.title }}</h3>
+            <p>{{ tool.description }}</p>
+          </component>
+        </li>
+      </ul>
+    </section>
 
-    <el-card v-else class="profile-card" shadow="never">
-      <template #header>Welcome to Basis Portal</template>
-      <BackendErrorDetails
-        v-if="error"
-        :error="error"
-        fallback-description="Unable to load the current user."
-      />
-      <el-alert
-        v-else
-        title="Sign in to load your Basis profile."
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <el-button
-        class="sign-in-button"
-        type="primary"
-        @click="signInWithDevConnect"
-      >
-        Sign in with DevConnect
-      </el-button>
-    </el-card>
+    <section
+      v-if="adminLinks.length"
+      class="workspace-admin"
+      aria-labelledby="workspace-admin-title"
+    >
+      <h2 id="workspace-admin-title">Administration</h2>
+      <NuxtLink v-for="link in adminLinks" :key="link.to" :to="link.to">
+        <el-icon aria-hidden="true"><component :is="link.icon" /></el-icon>
+        {{ link.label }}
+      </NuxtLink>
+    </section>
   </section>
 </template>
 
 <style scoped>
-.profile-card {
-  max-width: 720px;
+.overview {
+  container-type: inline-size;
+  display: grid;
+  gap: 28px;
+  max-width: 1440px;
+  margin-inline: auto;
 }
 
-.sign-in-button {
-  margin-top: 20px;
+.overview > .page-header {
+  margin-bottom: 0;
 }
+
+.workspace-tools h2,
+.workspace-admin h2 {
+  margin: 0;
+  color: var(--el-text-color-primary);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.workspace-tools__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workspace-tool {
+  display: block;
+  height: 100%;
+  padding: 18px;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.workspace-tool__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--el-text-color-regular);
+  font-size: 16px;
+}
+
+.workspace-tool__icon {
+  width: 40px;
+  height: 40px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.workspace-tool__access {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.workspace-tool h3 {
+  margin: 12px 0 4px;
+  color: var(--el-text-color-primary);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.workspace-tool p {
+  margin: 0;
+  color: var(--el-text-color-regular);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+a.workspace-tool:hover {
+  border-color: var(--el-color-primary);
+}
+
+.workspace-tool:focus-visible,
+.workspace-admin a:focus-visible {
+  outline: 2px solid var(--el-color-primary-dark-2);
+  outline-offset: 3px;
+}
+
+.workspace-admin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--el-border-color-light);
+}
+
+.workspace-admin h2 {
+  font-size: 14px;
+}
+
+.workspace-admin a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  color: var(--el-text-color-regular);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.workspace-admin a:hover {
+  color: var(--el-text-color-primary);
+  text-decoration: underline;
+}
+
+@container (max-width: 620px) {
+  .workspace-tools__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 </style>
