@@ -1,3 +1,8 @@
+-- Migration 0009 updates "projects", which queues the deferred
+-- projects_require_owner trigger until commit. Drizzle runs pending
+-- migrations in a single transaction, so those pending trigger events
+-- block the ALTER TABLE below. Fire them before altering the table.
+SET CONSTRAINTS ALL IMMEDIATE;--> statement-breakpoint
 ALTER TABLE "projects" DROP CONSTRAINT "projects_assets_vfs_project_uid_unique";--> statement-breakpoint
 ALTER TABLE "projects" DROP CONSTRAINT "projects_assets_manifest_object_id_unique";--> statement-breakpoint
 UPDATE "projects" AS target
