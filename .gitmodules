@@ -1,0 +1,3 @@
+[submodule "packages/basis-schema"]
+	path = packages/basis-schema
+	url = ../basis-schema.git
