@@ -68,7 +68,6 @@ export default defineEventHandler(async (event) => {
     requireMatchingAssetsUser(tokens.claims()?.sub, userId);
     await saveAssetsTokens(userId, tokens);
   } catch (error) {
-    console.log(error)
     if (error instanceof AssetsIdentityMismatchError)
       return sendRedirect(event, "/assets?auth=mismatch");
 

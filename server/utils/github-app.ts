@@ -48,7 +48,6 @@ function githubAppError(
   error: unknown,
   operation: "installation" | "token",
 ) {
-  console.log(error)
   const status = responseStatus(error);
   if (status === 404 && operation === "installation") {
     return new APIError(

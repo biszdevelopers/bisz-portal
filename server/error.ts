@@ -42,7 +42,17 @@ export default defineNitroErrorHandler((input, event) => {
           status,
         );
 
-  if (!isSafe) console.error("Unhandled API error", input);
+  if (!isSafe) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "Unhandled API error",
+        status,
+        error: original?.message ?? "Unknown error",
+        stack: original?.stack ?? undefined,
+      }),
+    );
+  }
   setResponseStatus(event, apiError.status);
   setResponseHeader(event, "cache-control", "no-store");
   setResponseHeader(event, "vary", "Accept");
