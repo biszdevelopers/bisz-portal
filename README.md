@@ -15,7 +15,7 @@ The local portal runs at `http://localhost:4005`.
 
 ## Authentication
 
-The portal signs in through the sibling Basis Auth service (DevConnect) with OpenID Connect. Copy `.env.example` to `.env.local`, configure the registered client credentials, and keep `NUXT_SESSION_PASSWORD` private. The required callback URL is:
+The portal signs in through the sibling Basis Auth service (DevConnect) with OpenID Connect. Copy `.env.example` to `.env.local`, configure the registered client credentials, and keep `NUXT_APP_SECRET` (or the legacy `NUXT_SESSION_PASSWORD`) private. The required callback URL is:
 
 ```text
 http://localhost:4005/api/auth/callback/basis-auth
@@ -26,7 +26,7 @@ Run `bun run db:migrate` before starting the updated portal. Its
 per portal session. The sealed, HttpOnly cookie now holds only an opaque session
 reference; existing cookie sessions are migrated on their next authenticated
 request. Access tokens refresh shortly before expiry, and signing out removes
-the stored token pair. Keep `NUXT_SESSION_PASSWORD` stable because it also
+the stored token pair. Keep `NUXT_APP_SECRET` (or the legacy `NUXT_SESSION_PASSWORD`) stable because it also
 derives the database token-encryption key. A revoked or expired refresh token
 requires a new DevConnect sign-in.
 
@@ -34,5 +34,12 @@ requires a new DevConnect sign-in.
 
 ```bash
 bun run typecheck
+bun run test
+bun run test:component
 bun run build
+bun run check:bundle
 ```
+
+External services, credentials, APIs, and failure modes are documented in
+[`DEPENDENCIES.md`](./DEPENDENCIES.md).
+

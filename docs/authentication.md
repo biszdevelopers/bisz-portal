@@ -10,7 +10,7 @@ Register a confidential client in `basis-auth` with this callback URL:
 http://localhost:4005/api/auth/callback/basis-auth
 ```
 
-Copy `.env.example` to `.env.local` and provide the registered client ID and secret. Set `BASIS_PORTAL_ORIGIN` to the public portal origin and use a unique `NUXT_SESSION_PASSWORD` of at least 32 random characters. For loopback HTTP origins (`localhost`, `127.0.0.1`, or `::1`), the portal deliberately issues a non-`Secure` development session cookie. All non-loopback environments require HTTPS. Secrets belong only in ignored environment files or the deployment secret store.
+Copy `.env.example` to `.env.local` and provide the registered client ID and secret. Set `BASIS_PORTAL_ORIGIN` to the public portal origin and use a unique `NUXT_APP_SECRET` (or the legacy `NUXT_SESSION_PASSWORD`) of at least 32 random characters. For loopback HTTP origins (`localhost`, `127.0.0.1`, or `::1`), the portal deliberately issues a non-`Secure` development session cookie. All non-loopback environments require HTTPS. Secrets belong only in ignored environment files or the deployment secret store.
 
 The client requests `openid profile email offline_access noesis.access` for the `devconnect://noesis` resource. `offline_access` makes Basis Auth issue a rotating refresh token, which the portal retains alongside the access token in server-only encrypted session data. The local portal session uses the same 30-day maximum lifetime as the Basis Auth refresh-token family. `noesis.access` only indicates that the access token may access BISZ Portal. It does not contain or imply permissions; every operation still requires its delegated `BiszPortal.*` permission.
 
@@ -90,3 +90,4 @@ export default defineEventHandler(async (event) => {
 ```
 
 The Nuxt session cookie establishes the local portal session, but the embedded Basis-issued access token remains the authority for BISZ Portal API access. `authenticateRequest` validates both layers before a route continues.
+
