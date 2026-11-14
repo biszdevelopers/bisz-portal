@@ -171,11 +171,10 @@ export function encryptPushPayload(
   subscription: Pick<PushSubscriptionKeys, "p256dh" | "auth">,
   options: { salt?: Buffer; ephemeralPrivateKey?: Buffer } = {},
 ) {
-  return encryptPushBytes(
-    Buffer.from(JSON.stringify(payload), "utf8"),
-    subscription,
-    options,
-  );
+  const encoded = Buffer.from(JSON.stringify(payload), "utf8");
+  if (encoded.length > 4096 - 128)
+    throw new Error("Push payload is too large");
+  return encryptPushBytes(encoded, subscription, options);
 }
 
 export function encryptPushBytes(

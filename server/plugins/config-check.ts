@@ -8,6 +8,7 @@ const required = [
   "BASIS_AUTH_RESOURCE",
   "BASIS_AUTH_INTERNAL_URL",
   "BASIS_AUTH_INTERNAL_TOKEN",
+  "BASIS_PORTAL_ORIGIN",
 ];
 
 export default defineNitroPlugin(() => {

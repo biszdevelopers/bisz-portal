@@ -96,8 +96,9 @@ export function pushConfigured() {
 export async function pushAllowed(
   userId: string,
   type: string,
+  db: DatabaseWriter = useDatabase(),
 ): Promise<NotificationPreferences> {
-  const [settings] = await useDatabase()
+  const [settings] = await db
     .select()
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
@@ -121,7 +122,7 @@ export async function enqueuePush(
   },
 ) {
   if (!pushConfigured()) return;
-  const preferences = await pushAllowed(input.userId, input.type);
+  const preferences = await pushAllowed(input.userId, input.type, db);
   const key = preferenceByType[input.type];
   if (key && preferences.types[key] === false) return;
   if (inQuietHours(preferences)) return;
@@ -199,8 +200,8 @@ export async function processPushQueue() {
 
     for (const { delivery, notification, subscription } of deliveries) {
       const payload: PushPayload = {
-        title: notification.title,
-        body: notification.body,
+        title: notification.title.slice(0, 120),
+        body: notification.body.slice(0, 500),
         url: internalUrl(notification.url),
         tag: notification.dedupeKey,
         icon: "/icons/icon-192.png",
