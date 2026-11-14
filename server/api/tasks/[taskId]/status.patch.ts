@@ -6,7 +6,14 @@ import { requireProjectCapability } from "~/server/utils/authorization";
 import { requireSameOrigin } from "~/server/utils/basis-applications";
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import { useDatabase } from "~/server/database/client";
-import { projects, taskMembers, tasks } from "~/server/database/schema";
+import {
+  projectMembers,
+  projects,
+  taskMembers,
+  tasks,
+} from "~/server/database/schema";
+import { recordActivity } from "~/server/services/activity";
+import { createNotifications } from "~/server/services/notifications";
 import { taskTagViewsByTaskId } from "~/server/services/task-tags";
 import { taskMemberViewsByTaskId } from "~/server/services/task-members";
 import { parseBody } from "~/server/utils/request";
@@ -196,7 +203,59 @@ export default defineEventHandler(async (event) => {
       .set({ updatedAt: now })
       .where(eq(projects.id, project.id));
 
-    return { task: updated, projectName: project.name };
+    await recordActivity(transaction, {
+      projectId: project.id,
+      actorId: auth.user.id,
+      type:
+        body.status === "in_review"
+          ? "task_status_changed"
+          : body.status === "done"
+            ? "task_status_changed"
+            : "task_status_changed",
+      taskId: task.id,
+      metadata: {
+        title: updated.title,
+        from: task.status,
+        to: body.status,
+      },
+    });
+
+    if (body.status === "in_review") {
+      const reviewers = await transaction
+        .select()
+        .from(projectMembers)
+        .where(eq(projectMembers.projectId, project.id));
+      const recipients = reviewers
+        .filter(
+          (member) =>
+            member.userId !== auth.user.id &&
+            (member.role === "owner" ||
+              (member.permissions as string[]).includes("tasks.write")),
+        )
+        .map((member) => member.userId);
+      if (recipients.length) {
+        await createNotifications(
+          transaction,
+          recipients.map((userId) => ({
+            userId,
+            type: "review_requested" as const,
+            title: `Review requested: ${updated.title}`,
+            body: project.name,
+            url: `/tasks/${task.id}`,
+            projectId: project.id,
+            taskId: task.id,
+            actorId: auth.user.id,
+            dedupeKey: `review:${task.id}:${userId}`,
+          })),
+        );
+      }
+    }
+
+    return {
+      task: updated,
+      projectName: project.name,
+      projectStatus: project.status,
+    };
   });
 
   if (result instanceof APIError) return apiResult(event, result);
@@ -223,6 +282,18 @@ export default defineEventHandler(async (event) => {
         task.members.some((member) => member.userId === auth.user.id)),
     review: task.status === "in_review" && access.capabilities.updateTasks,
     manageMembers: task.status === "todo" && access.capabilities.updateTasks,
+    edit:
+      result.projectStatus === "active" &&
+      task.status !== "in_review" &&
+      access.capabilities.updateTasks,
+    delete:
+      result.projectStatus === "active" &&
+      task.status !== "in_review" &&
+      access.capabilities.updateTasks,
+    duplicate:
+      result.projectStatus === "active" && access.capabilities.createTasks,
+    comment:
+      result.projectStatus === "active" && access.capabilities.updateTasks,
   };
   return apiResult(event, new APIResponse({ task, actions }));
 });

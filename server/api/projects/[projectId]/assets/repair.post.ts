@@ -19,7 +19,8 @@ import {
 } from "~/server/utils/assets-projects";
 import { useDatabase } from "~/server/database/client";
 import { projects } from "~/server/database/schema";
-import { getProjectDetail } from "~/server/services/projects";
+import { getProjectSummary } from "~/server/services/projects";
+import { recordActivity } from "~/server/services/activity";
 import { AssetsPermissions, PortalPermissions } from "~/shared/permissions";
 
 export default defineEventHandler(async (event) => {
@@ -178,6 +179,12 @@ export default defineEventHandler(async (event) => {
     );
   }
 
+  await recordActivity(useDatabase(), {
+    projectId,
+    actorId: auth.user.id,
+    type: "asset_link_repaired",
+    metadata: { uid: allocatedAssetsProject.uid },
+  });
   return apiResult(
     event,
     new APIResponse({
@@ -185,7 +192,7 @@ export default defineEventHandler(async (event) => {
         uid: allocatedAssetsProject.uid,
         status: "linked",
       },
-      project: await getProjectDetail(auth, projectId),
+      project: await getProjectSummary(auth, projectId),
     }),
   );
 });

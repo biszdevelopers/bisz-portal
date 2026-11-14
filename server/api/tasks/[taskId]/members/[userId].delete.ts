@@ -7,6 +7,7 @@ import { requireSameOrigin } from "~/server/utils/basis-applications";
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import { useDatabase } from "~/server/database/client";
 import { projects, taskMembers, tasks } from "~/server/database/schema";
+import { recordActivity } from "~/server/services/activity";
 
 export default defineEventHandler(async (event) => {
   const auth = await authenticateRequest(event);
@@ -32,6 +33,13 @@ export default defineEventHandler(async (event) => {
       const now = new Date();
       await transaction.update(tasks).set({ updatedAt: now }).where(eq(tasks.id, taskId));
       await transaction.update(projects).set({ updatedAt: now }).where(eq(projects.id, task.projectId));
+      await recordActivity(transaction, {
+        projectId: task.projectId,
+        actorId: auth.user.id,
+        type: "task_members_removed",
+        taskId,
+        metadata: { userId, title: task.title },
+      });
     }
     return rows;
   });

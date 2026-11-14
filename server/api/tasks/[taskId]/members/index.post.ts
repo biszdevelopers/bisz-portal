@@ -10,6 +10,8 @@ import { projectMembers, projects, taskMembers, tasks } from "~/server/database/
 import { findBasisUser } from "~/server/utils/basis-users";
 import { parseBody } from "~/server/utils/request";
 import { taskMemberCreateSchema } from "~/shared/contracts";
+import { recordActivity } from "~/server/services/activity";
+import { createNotifications } from "~/server/services/notifications";
 
 export default defineEventHandler(async (event) => {
   const auth = await authenticateRequest(event);
@@ -51,6 +53,33 @@ export default defineEventHandler(async (event) => {
       const now = new Date();
       await transaction.update(tasks).set({ updatedAt: now }).where(eq(tasks.id, taskId));
       await transaction.update(projects).set({ updatedAt: now }).where(eq(projects.id, task.projectId));
+      const [project] = await transaction
+        .select({ name: projects.name })
+        .from(projects)
+        .where(eq(projects.id, task.projectId))
+        .limit(1);
+      await recordActivity(transaction, {
+        projectId: task.projectId,
+        actorId: auth.user.id,
+        type: "task_members_added",
+        taskId,
+        metadata: { userId: body.userId, title: task.title },
+      });
+      if (body.userId !== auth.user.id) {
+        await createNotifications(transaction, [
+          {
+            userId: body.userId,
+            type: "task_assigned",
+            title: `Assigned task: ${task.title}`,
+            body: project?.name ?? "",
+            url: `/tasks/${taskId}`,
+            projectId: task.projectId,
+            taskId,
+            actorId: auth.user.id,
+            dedupeKey: `task_assigned:${taskId}:${body.userId}`,
+          },
+        ]);
+      }
     });
   } catch (error) {
     if (typeof error === "object" && error && "code" in error && error.code === "23505") {

@@ -24,6 +24,8 @@ import {
 } from "~/shared/contracts";
 import { PortalPermissions } from "~/shared/permissions";
 import { findBasisUser } from "~/server/utils/basis-users";
+import { recordActivity } from "~/server/services/activity";
+import { createNotifications } from "~/server/services/notifications";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -167,6 +169,33 @@ export default defineEventHandler(async (event) => {
       .update(projects)
       .set({ updatedAt: new Date() })
       .where(eq(projects.id, project.id));
+
+    await recordActivity(transaction, {
+      projectId: project.id,
+      actorId: auth.user.id,
+      type: "task_created",
+      taskId: created.id,
+      metadata: { title: created.title },
+    });
+    const assigned = body.memberIds.filter(
+      (userId) => userId !== auth.user.id,
+    );
+    if (assigned.length) {
+      await createNotifications(
+        transaction,
+        assigned.map((userId) => ({
+          userId,
+          type: "task_assigned" as const,
+          title: `Assigned task: ${created.title}`,
+          body: project.name,
+          url: `/tasks/${created.id}`,
+          projectId: project.id,
+          taskId: created.id,
+          actorId: auth.user.id,
+          dedupeKey: `task_assigned:${created.id}:${userId}`,
+        })),
+      );
+    }
 
     const task: TaskView = {
       id: created.id,
