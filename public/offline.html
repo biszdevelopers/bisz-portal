@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#2f6feb" />
+    <title>DevConnect — offline</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        padding: 24px;
+        color: #101828;
+        background: #f6f7f9;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        place-items: center;
+      }
+      main { max-width: 360px; text-align: center; }
+      .mark {
+        display: grid;
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 20px;
+        color: #fff;
+        background: #2f6feb;
+        border-radius: 14px;
+        font-size: 26px;
+        font-weight: 700;
+        place-items: center;
+      }
+      h1 { margin: 0 0 8px; font-size: 22px; }
+      p { margin: 0 0 20px; color: #667085; line-height: 1.5; }
+      a {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        padding: 0 18px;
+        color: #fff;
+        background: #2f6feb;
+        border-radius: 8px;
+        font: inherit;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { color: #e7eaf0; background: #0f1115; }
+        p { color: #98a2b3; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true">D</div>
+      <h1>You are offline</h1>
+      <p>DevConnect needs a connection for projects, tasks, and incidents. Check your network and try again.</p>
+      <a href="/">Try again</a>
+    </main>
+  </body>
+</html>
