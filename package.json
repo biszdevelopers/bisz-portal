@@ -7,12 +7,15 @@
     "build": "nuxt build",
     "start": "node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
-    "test": "bun test",
+    "test": "bun test tests",
     "test:component": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run scripts/migrate.ts",
     "db:seed": "bun run scripts/seed.ts",
-    "db:setup": "bun run db:migrate && bun run db:seed"
+    "db:setup": "bun run db:migrate && bun run db:seed",
+    "vapid:generate": "node scripts/generate-vapid.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "check:bundle": "node scripts/check-bundle.mjs"
   },
   "dependencies": {
     "@basis/schema": "file:./packages/basis-schema",
@@ -21,7 +24,6 @@
     "drizzle-orm": "0.45.4",
     "element-plus": "^2.14.8",
     "jose": "^6.2.17",
-    "markdown-it": "^15.0.3",
     "nuxt": "4.6.4",
     "nuxt-auth-utils": "^0.6.2",
     "openid-client": "^6.9.0",
@@ -36,14 +38,11 @@
   },
   "devDependencies": {
     "@nuxt/test-utils": "^4.4.0",
-    "@tailwindcss/vite": "^4.3.5",
     "@types/bun": "^1.4.4",
-    "@types/markdown-it": "^14.2.0",
     "@types/pg": "^8.23.1",
     "@vue/test-utils": "^2.5.1",
     "drizzle-kit": "^0.31.11",
     "happy-dom": "^21.0.4",
-    "tailwindcss": "^4.3.5",
     "typescript": "^6.0.3",
     "vitest": "^5.1.0",
     "vue-tsc": "^3.3.14"
@@ -56,5 +55,17 @@
   "trustedDependencies": [
     "sharp",
     "unrs-resolver"
-  ]
+  ],
+  "type": "module",
+  "overrides": {
+    "brace-expansion": "5.0.13",
+    "glob": "14.0.6",
+    "node-forge": "1.4.3",
+    "vite": "8.3.8",
+    "source-map-js": "1.2.2",
+    "minimatch": "11.0.8",
+    "serialize-javascript": "7.1.4",
+    "shell-quote": "1.12.0",
+    "esbuild": "0.28.2"
+  }
 }
