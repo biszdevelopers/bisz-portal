@@ -83,6 +83,20 @@ export default defineEventHandler(async (event) => {
       row.projectStatus === "active" &&
       access.capabilities.updateTasks &&
       !otherReview,
+    edit:
+      row.projectStatus === "active" &&
+      access.capabilities.updateTasks &&
+      !otherReview,
+    delete:
+      row.projectStatus === "active" &&
+      access.capabilities.updateTasks &&
+      !otherReview &&
+      row.task.status !== "in_review",
+    duplicate:
+      row.projectStatus === "active" &&
+      access.capabilities.createTasks &&
+      !otherReview,
+    comment: row.projectStatus === "active" && access.capabilities.updateTasks,
   };
   return apiResult(
     event,

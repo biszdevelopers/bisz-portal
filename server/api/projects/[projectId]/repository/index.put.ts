@@ -7,7 +7,7 @@ import {
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import { useDatabase } from "~/server/database/client";
 import { projects } from "~/server/database/schema";
-import { getProjectDetail } from "~/server/services/projects";
+import { getProjectSummary } from "~/server/services/projects";
 import { fetchGitHubRepository } from "~/server/utils/github-repository";
 import { parseBody } from "~/server/utils/request";
 import { repositoryValidationSchema } from "~/shared/contracts";
@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
     event,
     new APIResponse(
       {
-        project: await getProjectDetail(auth, projectId),
+        project: await getProjectSummary(auth, projectId),
         ...repository,
       },
       200,
