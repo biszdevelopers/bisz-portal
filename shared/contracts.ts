@@ -246,6 +246,10 @@ export type TaskActions = {
   submitForReview: boolean;
   review: boolean;
   manageMembers: boolean;
+  edit: boolean;
+  delete: boolean;
+  duplicate: boolean;
+  comment: boolean;
 };
 
 export const userListQuerySchema = z.object({
@@ -438,3 +442,469 @@ export type ApplicationDetail = ApplicationSummary & {
   permissionCatalogVersion: number;
   redirectUris: string[];
 };
+
+export const incidentSeveritySchema = z.enum([
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+export type IncidentSeverity = z.infer<typeof incidentSeveritySchema>;
+
+export const incidentStatusSchema = z.enum([
+  "open",
+  "investigating",
+  "resolved",
+]);
+export type IncidentStatus = z.infer<typeof incidentStatusSchema>;
+
+export const incidentCreateSchema = z
+  .object({
+    projectId: z.string().uuid(),
+    title: z.string().trim().min(1).max(160),
+    description: z.string().max(50_000).default(""),
+    severity: incidentSeveritySchema.default("medium"),
+    status: incidentStatusSchema.default("open"),
+    assigneeId: z.string().uuid().nullable().default(null),
+    dueDate: z.iso.date().nullable().default(null),
+  })
+  .strict();
+
+export const incidentUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(160).optional(),
+    description: z.string().max(50_000).optional(),
+    severity: incidentSeveritySchema.optional(),
+    status: incidentStatusSchema.optional(),
+    assigneeId: z.string().uuid().nullable().optional(),
+    dueDate: z.iso.date().nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => Object.keys(value).length > 0,
+    "At least one incident field is required",
+  );
+
+export const incidentListQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  status: incidentStatusSchema.optional(),
+  severity: incidentSeveritySchema.optional(),
+  projectId: z.string().uuid().optional(),
+  assigneeId: z.string().uuid().optional(),
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
+export type IncidentView = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  creatorId: string;
+  assigneeId: string | null;
+  assignee: UserSummary | null;
+  title: string;
+  description: string;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  dueDate: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  capabilities: {
+    update: boolean;
+  };
+};
+
+export type IncidentDetail = IncidentView & {
+  comments: CommentView[];
+  activity: ActivityView[];
+};
+
+export type IncidentPage = {
+  incidents: IncidentView[];
+  nextCursor: string | null;
+};
+
+export type CalendarEventType = "task" | "incident";
+
+export type CalendarEvent = {
+  id: string;
+  type: CalendarEventType;
+  title: string;
+  date: string;
+  projectId: string;
+  projectName: string;
+  status: string;
+  severity?: IncidentSeverity;
+  url: string;
+};
+
+export type CalendarResponse = {
+  events: CalendarEvent[];
+};
+
+export type TaskUpdateInput = {
+  title?: string;
+  description?: string;
+  dueDate?: string | null;
+  tags?: string[];
+};
+
+export const taskUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120).optional(),
+    description: z.string().max(50_000).optional(),
+    dueDate: z.iso.date().nullable().optional(),
+    tags: z
+      .array(tagNameSchema)
+      .max(20)
+      .refine(
+        (values) => new Set(values).size === values.length,
+        "Task tags must be unique",
+      )
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (value) => Object.keys(value).length > 0,
+    "At least one task field is required",
+  );
+
+export const taskDuplicateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+
+export const taskBulkSchema = z.union([
+  z.object({
+    taskIds: z.array(z.string().uuid()).min(1).max(100),
+    action: z.literal("status"),
+    value: z.enum(["todo", "done"]),
+  }),
+  z.object({
+    taskIds: z.array(z.string().uuid()).min(1).max(100),
+    action: z.literal("add-tag"),
+    value: tagNameSchema,
+  }),
+  z.object({
+    taskIds: z.array(z.string().uuid()).min(1).max(100),
+    action: z.literal("remove-tag"),
+    value: tagNameSchema,
+  }),
+  z.object({
+    taskIds: z.array(z.string().uuid()).min(1).max(100),
+    action: z.literal("assign"),
+    value: z.string().uuid(),
+  }),
+  z.object({
+    taskIds: z.array(z.string().uuid()).min(1).max(100),
+    action: z.literal("unassign"),
+    value: z.string().uuid(),
+  }),
+]);
+
+export type TaskBulkInput = z.infer<typeof taskBulkSchema>;
+export type TaskBulkResult = {
+  updated: string[];
+  skipped: Array<{ id: string; reason: string }>;
+};
+
+export const taskListQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  status: z.enum(["todo", "in_review", "done"]).optional(),
+  projectId: z.string().uuid().optional(),
+  assigneeId: z.string().uuid().optional(),
+  tag: tagNameSchema.optional(),
+  due: z.enum(["overdue", "today", "week", "none"]).optional(),
+  mine: z.coerce.boolean().optional(),
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
+export const taskTemplateCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    title: z.string().trim().min(1).max(120),
+    description: z.string().max(50_000).default(""),
+    dueOffsetDays: z.number().int().min(0).max(365).nullable().default(null),
+    tags: z.array(tagNameSchema).max(20).default([]),
+    memberIds: z.array(z.string().uuid()).max(50).default([]),
+  })
+  .strict();
+
+export const taskTemplateUpdateSchema = taskTemplateCreateSchema
+  .partial()
+  .refine(
+    (value) => Object.keys(value).length > 0,
+    "At least one template field is required",
+  );
+
+export type TaskTemplateView = {
+  id: string;
+  projectId: string;
+  name: string;
+  title: string;
+  description: string;
+  dueOffsetDays: number | null;
+  tags: string[];
+  memberIds: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const commentCreateSchema = z
+  .object({
+    body: z.string().trim().min(1).max(20_000),
+    projectId: z.string().uuid().optional(),
+    taskId: z.string().uuid().optional(),
+    incidentId: z.string().uuid().optional(),
+    mentionIds: z.array(z.string().uuid()).max(20).default([]),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      [value.projectId, value.taskId, value.incidentId].filter(Boolean)
+        .length === 1,
+    "A comment must target exactly one project, task, or incident",
+  );
+
+export const commentUpdateSchema = z
+  .object({ body: z.string().trim().min(1).max(20_000) })
+  .strict();
+
+export const commentListQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  taskId: z.string().uuid().optional(),
+  incidentId: z.string().uuid().optional(),
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type CommentView = {
+  id: string;
+  authorId: string;
+  author: UserSummary | null;
+  body: string;
+  projectId: string | null;
+  taskId: string | null;
+  incidentId: string | null;
+  mentions: UserSummary[];
+  editedAt: string | null;
+  createdAt: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  deleted: boolean;
+};
+
+export type CommentPage = {
+  comments: CommentView[];
+  nextCursor: string | null;
+};
+
+export const activityListQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  taskId: z.string().uuid().optional(),
+  incidentId: z.string().uuid().optional(),
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type ActivityView = {
+  id: string;
+  projectId: string | null;
+  actorId: string;
+  actor: UserSummary | null;
+  type: string;
+  taskId: string | null;
+  incidentId: string | null;
+  commentId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type ActivityPage = {
+  activity: ActivityView[];
+  nextCursor: string | null;
+};
+
+export const notificationPreferenceKeys = [
+  "taskAssigned",
+  "reviewRequested",
+  "dueSoon",
+  "incidentUpdates",
+  "membershipChanges",
+  "mentions",
+  "replies",
+] as const;
+
+export type NotificationPreferenceKey =
+  (typeof notificationPreferenceKeys)[number];
+
+export type NotificationPreferences = {
+  types: Record<NotificationPreferenceKey, boolean>;
+  quietHours: {
+    enabled: boolean;
+    start: string;
+    end: string;
+  };
+};
+
+export const notificationPreferencesSchema = z
+  .object({
+    types: z
+      .object({
+        taskAssigned: z.boolean(),
+        reviewRequested: z.boolean(),
+        dueSoon: z.boolean(),
+        incidentUpdates: z.boolean(),
+        membershipChanges: z.boolean(),
+        mentions: z.boolean(),
+        replies: z.boolean(),
+      })
+      .strict(),
+    quietHours: z
+      .object({
+        enabled: z.boolean(),
+        start: z.string().regex(/^\d{2}:\d{2}$/),
+        end: z.string().regex(/^\d{2}:\d{2}$/),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type NotificationView = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  url: string;
+  readAt: string | null;
+  createdAt: string;
+  actor: UserSummary | null;
+  projectId: string | null;
+  taskId: string | null;
+  incidentId: string | null;
+  commentId: string | null;
+};
+
+export type NotificationPage = {
+  notifications: NotificationView[];
+  nextCursor: string | null;
+  unread: number;
+};
+
+export type NotificationSummary = {
+  unread: number;
+  latestId: string | null;
+  generatedAt: string;
+};
+
+export type PushSubscriptionInput = {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  userAgent?: string;
+};
+
+export const pushSubscriptionSchema = z
+  .object({
+    endpoint: z.url().max(2048),
+    keys: z
+      .object({
+        p256dh: z.string().min(1).max(255),
+        auth: z.string().min(1).max(255),
+      })
+      .strict(),
+    userAgent: z.string().max(500).optional(),
+  })
+  .strict();
+
+export const savedFilterScopeSchema = z.enum([
+  "tasks",
+  "incidents",
+  "users",
+  "assets",
+]);
+export type SavedFilterScope = z.infer<typeof savedFilterScopeSchema>;
+
+export const savedFilterCreateSchema = z
+  .object({
+    scope: savedFilterScopeSchema,
+    name: z.string().trim().min(1).max(40),
+    query: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+export const savedFilterUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(40).optional(),
+    query: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+  .refine(
+    (value) => Object.keys(value).length > 0,
+    "At least one filter field is required",
+  );
+
+export type SavedFilterView = {
+  id: string;
+  scope: SavedFilterScope;
+  name: string;
+  query: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const searchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(200),
+  limit: z.coerce.number().int().min(1).max(20).default(5),
+});
+
+export type SearchResult = {
+  type: "project" | "task" | "incident" | "user";
+  id: string;
+  title: string;
+  subtitle: string;
+  url: string;
+};
+
+export type SearchResponse = {
+  results: SearchResult[];
+};
+
+export const calendarQuerySchema = z
+  .object({
+    from: z.iso.date(),
+    to: z.iso.date(),
+    projectId: z.string().uuid().optional(),
+  })
+  .refine(
+    (value) =>
+      (Date.parse(`${value.to}T00:00:00Z`) -
+        Date.parse(`${value.from}T00:00:00Z`)) /
+        86_400_000 <=
+      366,
+    "Calendar range cannot exceed one year",
+  )
+  .refine(
+    (value) => value.to >= value.from,
+    "Calendar end must not precede start",
+  );
+
+export const overviewResponseKeys = [
+  "openTasks",
+  "dueThisWeek",
+  "awaitingReview",
+  "openIncidents",
+] as const;
+
+export type OverviewKpis = Record<(typeof overviewResponseKeys)[number], number>;
+
+export type OverviewResponse = {
+  kpis: OverviewKpis;
+  myTasks: TaskView[];
+  upcoming: CalendarEvent[];
+  activity: ActivityView[];
+  unread: number;
+};
+
