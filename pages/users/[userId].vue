@@ -21,6 +21,12 @@ const { data, pending, error } = await useFetch<{ user: UserDetail }>(
   { headers },
 );
 const user = computed(() => data.value?.user);
+
+useHead(() => ({
+  title: user.value
+    ? `${user.value.displayName || user.value.email} · Users`
+    : "User · DevConnect",
+}));
 const requestError = shallowRef<unknown>(null);
 const activeTab = useHashTab("permissions", ["permissions"]);
 const editDialog = ref(false);
@@ -29,6 +35,17 @@ const permissionSaving = ref(false);
 const form = reactive({ displayName: "", disabled: false });
 const permissionGrants = ref<Record<string, string[]>>({});
 const permissionTree = computed(() => buildUserPermissionTree(user.value?.applications ?? []));
+const permissionRowsFlat = computed(() => {
+  const rows: Array<{ row: UserPermissionTreeRow; depth: number }> = [];
+  const walk = (items: UserPermissionTreeRow[], depth: number) => {
+    for (const row of items) {
+      rows.push({ row, depth });
+      if (row.children?.length) walk(row.children, depth + 1);
+    }
+  };
+  walk(permissionTree.value, 0);
+  return rows;
+});
 const applicationsById = computed(() => new Map((user.value?.applications ?? []).map((application) => [application.applicationId, application])));
 const editingSelf = computed(() => accessData.value?.user.id === user.value?.id);
 
@@ -214,7 +231,7 @@ watch(user, (current) => {
               row-key="id"
               :tree-props="{ children: 'children' }"
               empty-text="No applications have been used by this user"
-              class="permission-tree"
+              class="permission-tree desktop-table"
             >
               <el-table-column label="Application and permission" min-width="300">
                 <template #default="{ row }">
@@ -264,6 +281,40 @@ watch(user, (current) => {
                 </template>
               </el-table-column>
             </el-table>
+
+            <div class="mobile-card-list permission-mobile">
+              <article
+                v-for="entry in permissionRowsFlat"
+                :key="entry.row.id"
+                class="permission-mobile__row surface"
+                :style="{ marginLeft: `${entry.depth * 12}px` }"
+              >
+                <div class="permission-mobile__main">
+                  <span :class="`permission-label permission-${entry.row.kind}`">
+                    {{ entry.row.label }}
+                  </span>
+                  <el-tag
+                    v-if="entry.row.kind === 'namespace' || entry.row.kind === 'application'"
+                    size="small"
+                    effect="plain"
+                  >
+                    {{ rowPermissionCount(entry.row).selected }}/{{ rowPermissionCount(entry.row).total }}
+                  </el-tag>
+                  <small v-if="entry.row.kind === 'permission'">
+                    {{ entry.row.description }}
+                  </small>
+                  <small v-else>
+                    {{ entry.row.kind === "application" ? applicationsById.get(entry.row.applicationId)?.name : `${entry.row.prefix}.all` }}
+                  </small>
+                </div>
+                <el-checkbox
+                  :model-value="isEffectivelyGranted(entry.row, grantsFor(entry.row.applicationId))"
+                  :disabled="!capabilities.usersUpdate || isInheritedAndLocked(entry.row, grantsFor(entry.row.applicationId)) || entry.row.kind === 'application' && !entry.row.rootPrefixes?.length"
+                  :aria-label="`${entry.row.label} permission grant`"
+                  @change="togglePermission(entry.row)"
+                />
+              </article>
+            </div>
           </el-tab-pane>
         </el-tabs>
     </template>
@@ -413,6 +464,36 @@ pre {
 
 .configuration-card :deep(.el-table__cell) {
   vertical-align: top;
+}
+
+.permission-mobile {
+  display: none;
+}
+
+.permission-mobile__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+}
+
+.permission-mobile__main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.permission-mobile__main small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@media (max-width: 767px) {
+  .permission-mobile {
+    display: grid;
+  }
 }
 
 @media (max-width: 700px) {

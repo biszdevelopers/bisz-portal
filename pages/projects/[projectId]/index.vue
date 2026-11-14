@@ -160,6 +160,26 @@ const filteredTasks = computed(() => {
 const projectOptions = computed(() =>
   project.value ? [{ id: project.value.id, name: project.value.name }] : [],
 );
+const settingsDirty = computed(
+  () =>
+    Boolean(project.value) &&
+    (form.name !== project.value?.name ||
+      form.slug !== project.value?.slug ||
+      form.description !== project.value?.description),
+);
+
+onBeforeRouteLeave(async () => {
+  if (!settingsDirty.value) return true;
+  return await ElMessageBox.confirm(
+    "You have unsaved project settings. Leave without saving?",
+    "Unsaved changes",
+    { type: "warning", confirmButtonText: "Leave" },
+  ).then(
+    () => true,
+    () => false,
+  );
+});
+
 const canSaveGithub = computed(
   () =>
     canEditProjectSettings.value &&

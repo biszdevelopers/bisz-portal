@@ -44,6 +44,27 @@ const form = reactive({
   dueDate: null as string | null,
   tags: [] as string[],
 });
+const editDirty = computed(
+  () =>
+    Boolean(task.value) &&
+    (form.title !== task.value?.title ||
+      form.description !== task.value?.description ||
+      form.dueDate !== (task.value?.dueDate ?? null) ||
+      form.tags.join("\u0000") !==
+        (task.value?.tags.map((tag) => tag.name).join("\u0000") ?? "")),
+);
+
+onBeforeRouteLeave(async () => {
+  if (!editing.value || !editDirty.value) return true;
+  return await ElMessageBox.confirm(
+    "You have unsaved task changes. Leave without saving?",
+    "Unsaved changes",
+    { type: "warning", confirmButtonText: "Leave" },
+  ).then(
+    () => true,
+    () => false,
+  );
+});
 
 watch(
   task,
