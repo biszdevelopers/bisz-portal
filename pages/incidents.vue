@@ -11,6 +11,7 @@ import type {
 import { formatDate } from "~/utils/format";
 
 const route = useRoute();
+const router = useRouter();
 const { capabilities, pending: accessPending, error: accessError } =
   usePortalAccess();
 const incidents = ref<IncidentView[]>([]);
@@ -58,6 +59,16 @@ const severityType = (value: IncidentSeverity) =>
 const statusLabel = (value: IncidentStatus) =>
   value === "investigating" ? "Investigating" : value === "resolved" ? "Resolved" : "Open";
 
+function syncUrl() {
+  const query: Record<string, string> = {};
+  if (q.value.trim()) query.q = q.value.trim();
+  if (projectId.value) query.projectId = projectId.value;
+  if (status.value) query.status = status.value;
+  if (severity.value) query.severity = severity.value;
+  if (assignee.value[0]) query.assigneeId = assignee.value[0].id;
+  void router.replace({ query });
+}
+
 async function fetchIncidents(reset = true) {
   loading.value = true;
   loadError.value = null;
@@ -77,6 +88,7 @@ async function fetchIncidents(reset = true) {
       ? response.incidents
       : [...incidents.value, ...response.incidents];
     nextCursor.value = response.nextCursor;
+    syncUrl();
   } catch (caught) {
     loadError.value = caught;
   } finally {
@@ -141,6 +153,13 @@ watch(q, () => {
   searchTimer = setTimeout(() => void fetchIncidents(true), 300);
 });
 watch([projectId, status, severity, assignee], () => void fetchIncidents(true));
+watch(dialog, (open) => {
+  if (!open && typeof route.query.new === "string") {
+    const query = { ...route.query } as Record<string, string | string[]>;
+    delete query.new;
+    void router.replace({ query });
+  }
+});
 
 onMounted(async () => {
   await Promise.all([fetchIncidents(true), loadProjects()]);

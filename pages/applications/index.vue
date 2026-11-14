@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { Plus } from "@element-plus/icons-vue";
+
+useHead({ title: "Applications · DevConnect" });
 import { ElMessage } from "element-plus";
 import type { ApplicationDetail } from "~/shared/contracts";
 import type {

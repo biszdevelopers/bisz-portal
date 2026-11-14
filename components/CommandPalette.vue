@@ -69,8 +69,8 @@ const items = computed<PaletteItem[]>(() => {
 function loadRecent() {
   try {
     const raw = localStorage.getItem(RECENT_KEY);
-    const parsed = raw ? (JSON.parse(raw) as typeof recent.value) : [];
-    recent.value = parsed
+    const parsed = raw ? JSON.parse(raw) : [];
+    recent.value = (Array.isArray(parsed) ? parsed : [])
       .filter(
         (entry) =>
           typeof entry?.url === "string" &&

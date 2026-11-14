@@ -12,13 +12,28 @@ const page = ref(1);
 const pageSize = 20;
 const search = ref("");
 const debouncedSearch = ref("");
+const projectFilter = ref("");
+const projects = ref<Array<{ id: string; name: string }>>([]);
 const headers = import.meta.server ? useRequestHeaders(["cookie"]) : undefined;
 const { data, pending, error } = await useFetch<UserPage>("/api/users", {
   headers,
-  query: { page, pageSize, q: debouncedSearch },
+  query: { page, pageSize, q: debouncedSearch, projectId: projectFilter },
 });
 const users = computed(() => data.value?.users ?? []);
 const total = computed(() => data.value?.pagination.total ?? 0);
+
+async function loadProjects() {
+  try {
+    const response = await $fetch<{ projects: Array<{ id: string; name: string }> }>(
+      "/api/projects",
+    );
+    projects.value = response.projects;
+  } catch {
+    projects.value = [];
+  }
+}
+
+onMounted(loadProjects);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 function userInitials(user: Record<string, unknown>) {
@@ -45,6 +60,10 @@ watch(search, (value) => {
 });
 
 watch(debouncedSearch, () => {
+  page.value = 1;
+});
+
+watch(projectFilter, () => {
   page.value = 1;
 });
 
@@ -75,6 +94,9 @@ useHead({ title: "Users · DevConnect" });
     <el-card v-else shadow="never" v-loading="pending">
       <div class="users-toolbar">
         <el-input v-model="search" :prefix-icon="Search" clearable placeholder="Search by name or email" aria-label="Search users" />
+        <el-select v-model="projectFilter" clearable placeholder="All projects" aria-label="Filter users by project">
+          <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="project.id" />
+        </el-select>
         <span class="muted">{{ total }} user{{ total === 1 ? "" : "s" }}</span>
       </div>
 
@@ -146,6 +168,10 @@ useHead({ title: "Users · DevConnect" });
   max-width: 360px;
 }
 
+.users-toolbar .el-select {
+  width: 200px;
+}
+
 .user-id {
   margin: 0;
   overflow: hidden;
@@ -192,7 +218,9 @@ useHead({ title: "Users · DevConnect" });
     flex-direction: column;
   }
 
-  .users-toolbar .el-input {
+  .users-toolbar .el-input,
+  .users-toolbar .el-select {
+    width: 100%;
     max-width: none;
   }
 

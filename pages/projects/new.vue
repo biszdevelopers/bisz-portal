@@ -9,6 +9,8 @@ type AssetsConnection = {
   capabilities: AssetsCapabilities;
 };
 
+useHead({ title: "New project · DevConnect" });
+
 const {
   capabilities,
   pending: accessPending,

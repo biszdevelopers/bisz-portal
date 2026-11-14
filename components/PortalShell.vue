@@ -36,6 +36,8 @@ const {
   install,
   disablePush,
   supported: pushSupported,
+  updateReady,
+  applyUpdate,
 } = usePwa();
 
 const moreOpen = ref(false);
@@ -349,6 +351,18 @@ async function handleInstall() {
       </el-header>
 
       <el-main id="main-content" class="portal-main" tabindex="-1">
+        <el-alert
+          v-if="updateReady"
+          class="update-banner"
+          title="A new portal version is available"
+          type="info"
+          :closable="false"
+          show-icon
+        >
+          <el-button size="small" type="primary" @click="applyUpdate">
+            Reload to update
+          </el-button>
+        </el-alert>
         <slot />
       </el-main>
     </el-container>
@@ -589,6 +603,10 @@ async function handleInstall() {
   min-width: 0;
   padding: 28px 32px 48px;
   overflow-x: clip;
+}
+
+.update-banner {
+  margin-bottom: 16px;
 }
 
 .account-summary {

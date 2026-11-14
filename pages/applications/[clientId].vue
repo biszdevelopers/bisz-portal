@@ -23,6 +23,12 @@ const { data, pending, error, refresh } = await useFetch<{
   headers,
 });
 const application = computed(() => data.value?.application);
+
+useHead(() => ({
+  title: application.value?.name
+    ? `${application.value.name} · Applications`
+    : "Application · DevConnect",
+}));
 const applicationRoles = [
   { label: "Admin", value: "role.ADMIN" },
   { label: "General", value: "role.GENERAL" },

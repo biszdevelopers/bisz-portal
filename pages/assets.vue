@@ -25,6 +25,8 @@ const projectDialog = ref(false);
 const editingProject = ref<AssetProject | null>(null);
 const projectForm = reactive({ name: "", description: "" });
 
+useHead({ title: "Assets · DevConnect" });
+
 onMounted(async () => {
   if (route.query.auth === "connected")
     ElMessage.success("Connected to DevConnect Assets");
