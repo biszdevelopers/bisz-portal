@@ -25,13 +25,11 @@ const requestError = shallowRef<unknown>(null);
 const createdClientId = ref("");
 const createdSecret = ref("");
 const secretDialog = ref(false);
-const form = reactive({
-  name: "",
-  public: false,
-  redirectUri: "",
-  requireConsent: true,
-  organizationIds: [] as string[],
-});
+const applicationName = ref("");
+const applicationPublic = ref(false);
+const applicationRedirectUri = ref("");
+const applicationRequireConsent = ref(true);
+const applicationOrganizationIds = ref<string[]>([]);
 
 function openApplication(row: ApplicationSummary) {
   navigateTo(`/applications/${encodeURIComponent(row.clientId)}`);
@@ -46,13 +44,13 @@ async function createApplication() {
     }>("/api/applications", {
       method: "POST",
       body: {
-        name: form.name,
-        public: form.public,
-        redirectUris: [form.redirectUri],
-        requireConsent: form.requireConsent,
+        name: applicationName.value,
+        public: applicationPublic.value,
+        redirectUris: [applicationRedirectUri.value],
+        requireConsent: applicationRequireConsent.value,
         filterMode: null,
         filterContent: [],
-        organizationIds: form.organizationIds,
+        organizationIds: applicationOrganizationIds.value,
       },
     });
     requestError.value = null;
@@ -120,6 +118,7 @@ async function closeSecret() {
     />
     <el-card v-else shadow="never" v-loading="pending">
       <el-table
+        class="desktop-table"
         :data="applications"
         empty-text="No applications are assigned to you"
         @row-click="openApplication"
@@ -131,6 +130,16 @@ async function closeSecret() {
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="mobile-card-list">
+        <article v-for="application in applications" :key="application.clientId" class="application-card surface">
+          <div>
+            <strong>{{ application.name }}</strong>
+            <small class="mono">{{ application.clientId }}</small>
+          </div>
+          <el-button text @click="openApplication(application)">Open</el-button>
+        </article>
+      </div>
     </el-card>
 
     <el-dialog
@@ -140,15 +149,15 @@ async function closeSecret() {
     >
       <el-form label-position="top" @submit.prevent="createApplication">
         <el-form-item label="Application name"
-          ><el-input v-model="form.name"
+          ><el-input v-model="applicationName"
         /></el-form-item>
         <el-form-item label="Initial redirect URI"
           ><el-input
-            v-model="form.redirectUri"
+            v-model="applicationRedirectUri"
             placeholder="https://example.com/callback"
         /></el-form-item>
         <el-form-item label="Organizations"
-          ><el-checkbox-group v-model="form.organizationIds"
+          ><el-checkbox-group v-model="applicationOrganizationIds"
             ><el-checkbox
               v-for="organization in organizations"
               :key="organization.organizationId"
@@ -164,12 +173,12 @@ async function closeSecret() {
           </div></el-form-item
         >
         <el-form-item
-          ><el-checkbox v-model="form.public"
+          ><el-checkbox v-model="applicationPublic"
             >Public client (no client secret)</el-checkbox
           ></el-form-item
         >
         <el-form-item
-          ><el-checkbox v-model="form.requireConsent"
+          ><el-checkbox v-model="applicationRequireConsent"
             >Require user consent</el-checkbox
           ></el-form-item
         >
@@ -241,4 +250,27 @@ async function closeSecret() {
   font-size: 12px;
   margin-top: 6px;
 }
+.application-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.application-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.application-card strong,
+.application-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.application-card small {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
 </style>
+

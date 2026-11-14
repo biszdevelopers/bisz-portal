@@ -614,7 +614,7 @@ onMounted(() => void refreshGenerator());
                 ></el-tooltip
               >
             </div>
-            <el-table :data="application.resources">
+            <el-table class="desktop-table" :data="application.resources">
               <el-table-column prop="name" label="Resource" min-width="200" />
               <el-table-column
                 prop="resourceId"
@@ -665,6 +665,32 @@ onMounted(() => void refreshGenerator());
                 ></el-table-column
               >
             </el-table>
+
+            <div class="mobile-card-list">
+              <article v-for="resource in application.resources" :key="resource.resourceId" class="mobile-entity-card surface">
+                <div>
+                  <strong>{{ resource.name }}</strong>
+                  <small class="mono">{{ resource.resourceId }}</small>
+                  <el-tag size="small" :type="resource.claimCount > 1 ? 'warning' : 'info'">
+                    {{ resource.claimCount }} client{{ resource.claimCount === 1 ? "" : "s" }}
+                  </el-tag>
+                </div>
+                <div class="mobile-entity-card__actions">
+                  <el-button
+                    text
+                    :icon="EditPen"
+                    :disabled="!application.capabilities.manageResources || resource.claimCount > 1"
+                    @click="openResource('edit', resource)"
+                  >Edit</el-button>
+                  <el-button
+                    v-if="application.capabilities.manageResources"
+                    text
+                    type="danger"
+                    @click="removeResource(resource, false)"
+                  >Detach</el-button>
+                </div>
+              </article>
+            </div>
           </el-tab-pane>
 
           <el-tab-pane label="Scopes" name="scopes">
@@ -723,6 +749,7 @@ onMounted(() => void refreshGenerator());
               </div>
             </div>
             <el-table
+              class="desktop-table"
               :data="application.permissions"
               empty-text="No permission definitions"
             >
@@ -768,6 +795,24 @@ onMounted(() => void refreshGenerator());
                   </div></template
               ></el-table-column>
             </el-table>
+
+            <div class="mobile-card-list">
+              <article v-for="permission in application.permissions" :key="permission.permission" class="mobile-entity-card surface">
+                <div>
+                  <strong class="mono">{{ permission.permission }}</strong>
+                  <small>{{ permission.description }}</small>
+                  <el-checkbox
+                    :model-value="defaultPermissionSelection.includes(permission.permission)"
+                    :disabled="!application.capabilities.managePermissions"
+                    @change="setDefaultPermission(permission.permission, Boolean($event))"
+                  >Default</el-checkbox>
+                </div>
+                <div class="mobile-entity-card__actions">
+                  <el-button text :icon="EditPen" :disabled="!application.capabilities.managePermissions" @click="editPermission(permission)">Edit</el-button>
+                  <el-button text type="danger" :icon="Delete" :disabled="!application.capabilities.managePermissions" @click="deletePermission(permission)" />
+                </div>
+              </article>
+            </div>
           </el-tab-pane>
 
           <el-tab-pane label="Redirect URIs" name="redirects">
@@ -787,7 +832,7 @@ onMounted(() => void refreshGenerator());
                 ></el-tooltip
               >
             </div>
-            <el-table :data="application.redirectUris.map((uri) => ({ uri }))">
+            <el-table class="desktop-table" :data="application.redirectUris.map((uri) => ({ uri }))">
               <el-table-column prop="uri" label="Redirect URI" min-width="500"
                 ><template #default="{ row }">
                   <pre>{{ row.uri }}</pre>
@@ -814,6 +859,24 @@ onMounted(() => void refreshGenerator());
                   </div></template
               ></el-table-column>
             </el-table>
+
+            <div class="mobile-card-list">
+              <article v-for="(uri, index) in application.redirectUris" :key="uri" class="mobile-entity-card surface">
+                <div>
+                  <strong class="mono">{{ uri }}</strong>
+                </div>
+                <div class="mobile-entity-card__actions">
+                  <el-button text :icon="EditPen" :disabled="!application.capabilities.manageRedirectUris" @click="editRedirect(index)">Edit</el-button>
+                  <el-button
+                    text
+                    type="danger"
+                    :icon="Delete"
+                    :disabled="!application.capabilities.manageRedirectUris || application.redirectUris.length === 1"
+                    @click="deleteRedirect(index)"
+                  />
+                </div>
+              </article>
+            </div>
           </el-tab-pane>
 
           <el-tab-pane label="Authorization URL Generator" name="generator">
@@ -1169,6 +1232,32 @@ pre {
 .toolbar-description {
   margin: 6px 0 0;
   color: var(--el-text-color-secondary);
+}
+.mobile-entity-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.mobile-entity-card > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.mobile-entity-card strong,
+.mobile-entity-card small {
+  overflow-wrap: anywhere;
+}
+.mobile-entity-card small {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.mobile-entity-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
 }
 @media (max-width: 700px) {
   .application-header,

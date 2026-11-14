@@ -17,7 +17,7 @@ const {
   connectAssets,
 } = useAssetsApi();
 
-const activeTab = ref("assets");
+const activeTab = useHashTab("assets", ["assets", "projects"]);
 const requestError = shallowRef<unknown>(null);
 const busy = ref(false);
 const disconnecting = ref(false);
@@ -114,7 +114,8 @@ async function deleteProject(project: AssetProject) {
 </script>
 
 <template>
-  <section class="assets-page">
+  <section class="assets-page page">
+    <PageHeader title="Assets" description="Browse and manage files shared through DevConnect Assets." />
     <BackendErrorDetails
       v-if="requestError || connectionError || projectsError"
       :error="requestError || connectionError || projectsError"
@@ -144,7 +145,8 @@ async function deleteProject(project: AssetProject) {
 
       <el-tab-pane label="Asset projects" name="projects">
         <el-alert :closable="false" show-icon>
-          This page manages the asset server's project configuration. To see general assigned tasks, go <el-link>here</el-link>.
+          This page manages the asset server's project configuration. To see general assigned tasks, go
+          <NuxtLink to="/tasks">to Tasks</NuxtLink>.
         </el-alert>
 
         <el-alert
@@ -172,7 +174,7 @@ async function deleteProject(project: AssetProject) {
         </div>
 
         <el-card shadow="never" v-loading="projectsPending">
-          <el-table :data="projects" empty-text="No asset projects found">
+          <el-table class="desktop-table" :data="projects" empty-text="No asset projects found">
             <el-table-column prop="name" label="Name" min-width="200" />
             <el-table-column prop="uid" label="Project UID" min-width="300" />
             <el-table-column
@@ -200,6 +202,20 @@ async function deleteProject(project: AssetProject) {
               </template>
             </el-table-column>
           </el-table>
+
+          <div class="mobile-card-list">
+            <article v-for="project in projects" :key="project.uid" class="asset-project-card surface">
+              <div>
+                <strong>{{ project.name }}</strong>
+                <small>{{ project.description || "No description" }}</small>
+                <span class="mono">{{ project.uid }}</span>
+              </div>
+              <div class="asset-project-card__actions">
+                <el-button text :icon="EditPen" aria-label="Edit project" :disabled="!connection.connected" @click="openProject(project)" />
+                <el-button text type="danger" :icon="Delete" aria-label="Delete project" :disabled="!connection.connected" @click="deleteProject(project)" />
+              </div>
+            </article>
+          </div>
         </el-card>
       </el-tab-pane>
     </el-tabs>
@@ -248,6 +264,38 @@ async function deleteProject(project: AssetProject) {
   gap: 12px;
   margin-bottom: 14px;
 }
+.asset-project-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.asset-project-card > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.asset-project-card strong,
+.asset-project-card small,
+.asset-project-card .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-project-card small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.asset-project-card__actions {
+  display: flex;
+  gap: 2px;
+}
+
 @media (max-width: 640px) {
   .tab-toolbar {
     align-items: stretch;

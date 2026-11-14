@@ -1,277 +1,447 @@
 <script setup lang="ts">
 import {
-  Collection,
-  Connection,
+  Calendar,
+  CircleCheck,
   DocumentChecked,
+  FolderAdd,
   FolderOpened,
-  Lock,
   Right,
-  User,
+  WarningFilled,
 } from "@element-plus/icons-vue";
-import { NuxtLink } from "#components";
+import type { OverviewResponse } from "~/shared/contracts";
+import { formatDate } from "~/utils/format";
 
-const { capabilities, data, error, pending } = usePortalAccess();
-const accessError = computed(() =>
-  error.value?.statusCode === 401 ? undefined : error.value,
+const { capabilities, data: access, pending: accessPending, error: accessError } =
+  usePortalAccess();
+const headers = import.meta.server ? useRequestHeaders(["cookie"]) : undefined;
+const { data, pending, error } = await useFetch<OverviewResponse>(
+  "/api/overview",
+  { headers },
+);
+
+const accessFailed = computed(
+  () =>
+    Boolean(accessError.value) &&
+    normalizeBackendError(accessError.value).status !== 401,
 );
 const needsSignIn = computed(
-  () => !pending.value && !data.value && !accessError.value,
+  () => !accessPending.value && !access.value && !accessFailed.value,
 );
-const accessLabel = computed(() => {
-  if (pending.value) return "Checking access";
-  if (accessError.value) return "Access unavailable";
-  return needsSignIn.value ? "Sign-in required" : "Permission required";
-});
+const greeting = computed(() => access.value?.user.name ? `Welcome back, ${access.value.user.name}` : "Overview");
+const today = computed(() =>
+  new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(new Date()),
+);
 
-enum TimeOfDay {
-  Morning = "MORNING",
-  Afternoon = "AFTERNOON",
-  Evening = "EVENING",
-}
-
-function getCurrentTimeOfDay(date: Date = new Date()): TimeOfDay {
-  const hours = date.getHours();
-
-  if (hours >= 5 && hours < 12) return TimeOfDay.Morning;
-  if (hours >= 12 && hours < 17) return TimeOfDay.Afternoon;
-  return TimeOfDay.Evening;
-}
-
-const greeting = computed(() => {
-  const name = data.value?.user.name ?? "User";
-
-  if (getCurrentTimeOfDay() === TimeOfDay.Morning) {
-    return `Good morning! ${name}`;
-  }
-  if (getCurrentTimeOfDay() === TimeOfDay.Afternoon) {
-    return `Good afternoon! ${name}`;
-  }
-  return `Good evening! ${name}`;
-});
-
-const tools = computed(() => [
+const kpis = computed(() => [
   {
-    title: "Projects",
-    to: "/projects",
-    icon: FolderOpened,
-    description: "Browse projects, team members, and linked resources.",
-    available: capabilities.value.projectsRead,
-  },
-  {
-    title: "Tasks",
-    to: "/tasks",
+    label: "Open tasks",
+    value: data.value?.kpis.openTasks ?? 0,
     icon: DocumentChecked,
-    description: "Review assignments, due dates, and progress across projects.",
-    available: capabilities.value.tasksRead,
+    to: "/tasks",
+    tone: "blue",
   },
   {
-    title: "Assets",
-    to: "/assets",
-    icon: Collection,
-    description: "Browse public assets and manage shared files in DevConnect Assets.",
-    available: true,
+    label: "Due this week",
+    value: data.value?.kpis.dueThisWeek ?? 0,
+    icon: Calendar,
+    to: "/calendar",
+    tone: "amber",
+  },
+  {
+    label: "Awaiting review",
+    value: data.value?.kpis.awaitingReview ?? 0,
+    icon: CircleCheck,
+    to: "/tasks?status=in_review",
+    tone: "green",
+  },
+  {
+    label: "Open incidents",
+    value: data.value?.kpis.openIncidents ?? 0,
+    icon: WarningFilled,
+    to: "/incidents",
+    tone: "red",
   },
 ]);
 
-const adminLinks = computed(() =>
-  [
-    {
-      label: "Users",
-      to: "/users",
-      icon: User,
-      available: capabilities.value.usersRead,
-    },
-    {
-      label: "Applications",
-      to: "/applications",
-      icon: Connection,
-      available: capabilities.value.applicationsRead,
-    },
-  ].filter((link) => link.available),
-);
+function signIn() {
+  return navigateTo("/api/auth/callback/basis-auth", { external: true });
+}
+
+useHead({ title: "Overview · DevConnect" });
 </script>
 
 <template>
-  <section class="overview" aria-labelledby="overview-title">
-    <header class="page-header">
-      <h1 id="overview-title">{{ data?.user ? greeting : "Overview" }}</h1>
-      <p>
-        Manage projects, review assignments, and find shared assets across your
-        teams.
-      </p>
-    </header>
+  <section class="page overview">
+    <PageHeader
+      :title="greeting"
+      :description="`${today} · Your projects, tasks, and incidents in one place.`"
+    >
+      <template #actions>
+        <el-tooltip
+          :disabled="capabilities.projectsCreate"
+          content="Requires BiszPortal.Projects.create"
+        >
+          <span>
+            <el-button
+              v-if="capabilities.projectsCreate"
+              type="primary"
+              :icon="FolderAdd"
+              @click="navigateTo('/projects/new')"
+              >New project</el-button
+            >
+          </span>
+        </el-tooltip>
+        <el-button :icon="DocumentChecked" @click="navigateTo('/tasks')">My tasks</el-button>
+      </template>
+    </PageHeader>
 
     <BackendErrorDetails
-      v-if="accessError"
+      v-if="accessFailed"
       :error="accessError"
       fallback-description="Unable to load workspace access."
     />
 
-    <section class="workspace-tools" aria-labelledby="workspace-tools-title">
-      <h2 id="workspace-tools-title">Workspace tools</h2>
-      <ul class="workspace-tools__grid">
-        <li v-for="tool in tools" :key="tool.to">
-          <component
-            :is="tool.available ? NuxtLink : 'div'"
-            :to="tool.available ? tool.to : undefined"
-            class="workspace-tool"
-          >
-            <div class="workspace-tool__header">
-              <el-icon class="workspace-tool__icon" aria-hidden="true">
-                <component :is="tool.icon" />
-              </el-icon>
-              <el-icon v-if="tool.available" aria-hidden="true">
-                <Right />
-              </el-icon>
-              <span v-else class="workspace-tool__access">
-                <el-icon aria-hidden="true"><Lock /></el-icon>
-                {{ accessLabel }}
-              </span>
-            </div>
-            <h3>{{ tool.title }}</h3>
-            <p>{{ tool.description }}</p>
-          </component>
-        </li>
-      </ul>
-    </section>
+    <div v-if="needsSignIn" class="overview__signin surface">
+      <div class="overview__signin-mark" aria-hidden="true">D</div>
+      <h2>Sign in to DevConnect</h2>
+      <p>
+        Projects, tasks, incidents, the calendar, and shared assets live behind
+        your Basis account.
+      </p>
+      <el-button type="primary" :icon="Right" @click="signIn">
+        Sign in with DevConnect
+      </el-button>
+    </div>
 
-    <section
-      v-if="adminLinks.length"
-      class="workspace-admin"
-      aria-labelledby="workspace-admin-title"
-    >
-      <h2 id="workspace-admin-title">Administration</h2>
-      <NuxtLink v-for="link in adminLinks" :key="link.to" :to="link.to">
-        <el-icon aria-hidden="true"><component :is="link.icon" /></el-icon>
-        {{ link.label }}
-      </NuxtLink>
-    </section>
+    <template v-else>
+      <BackendErrorDetails v-if="error" :error="error" />
+
+      <div class="kpi-grid" :class="{ 'is-loading': pending }">
+        <NuxtLink
+          v-for="kpi in kpis"
+          :key="kpi.label"
+          :to="kpi.to"
+          class="kpi-card surface"
+          :class="`is-${kpi.tone}`"
+        >
+          <span class="kpi-card__icon">
+            <el-icon><component :is="kpi.icon" /></el-icon>
+          </span>
+          <span class="kpi-card__value">{{ kpi.value }}</span>
+          <span class="kpi-card__label">{{ kpi.label }}</span>
+        </NuxtLink>
+      </div>
+
+      <div class="overview-grid">
+        <section class="overview-panel surface">
+          <header class="overview-panel__header">
+            <h2>My work</h2>
+            <NuxtLink to="/tasks">View all <el-icon><Right /></el-icon></NuxtLink>
+          </header>
+          <div v-if="data?.myTasks.length" class="overview-list">
+            <TaskCard v-for="task in data.myTasks" :key="task.id" :task="task" />
+          </div>
+          <p v-else class="overview-empty">
+            Nothing assigned to you right now. Enjoy the quiet.
+          </p>
+        </section>
+
+        <section class="overview-panel surface">
+          <header class="overview-panel__header">
+            <h2>Upcoming</h2>
+            <NuxtLink to="/calendar">Calendar <el-icon><Right /></el-icon></NuxtLink>
+          </header>
+          <ul v-if="data?.upcoming.length" class="upcoming-list">
+            <li v-for="event in data.upcoming" :key="`${event.type}:${event.id}`">
+              <NuxtLink :to="event.url">
+                <span class="upcoming-date">{{ formatDate(event.date) }}</span>
+                <span class="upcoming-main">
+                  <strong>{{ event.title }}</strong>
+                  <small>{{ event.projectName }} · {{ event.type }}</small>
+                </span>
+              </NuxtLink>
+            </li>
+          </ul>
+          <p v-else class="overview-empty">Nothing due in the next week.</p>
+        </section>
+
+        <section class="overview-panel surface overview-panel--wide">
+          <header class="overview-panel__header">
+            <h2>Recent activity</h2>
+            <span class="muted">{{ data?.unread ?? 0 }} unread notifications</span>
+          </header>
+          <ActivityFeed global :limit="8" compact />
+        </section>
+
+        <section class="overview-panel surface">
+          <header class="overview-panel__header">
+            <h2>Quick actions</h2>
+          </header>
+          <div class="quick-actions">
+            <el-button v-if="capabilities.projectsRead" :icon="FolderOpened" @click="navigateTo('/projects')">
+              Browse projects
+            </el-button>
+            <el-button v-if="capabilities.tasksRead" :icon="DocumentChecked" @click="navigateTo('/tasks')">
+              Review tasks
+            </el-button>
+            <el-button v-if="capabilities.incidentsRead" :icon="WarningFilled" @click="navigateTo('/incidents?new=1')">
+              Report incident
+            </el-button>
+            <el-button :icon="Calendar" @click="navigateTo('/calendar')">
+              Open calendar
+            </el-button>
+          </div>
+        </section>
+
+        <section v-if="capabilities.applicationsRead || capabilities.usersRead" class="overview-panel surface">
+          <header class="overview-panel__header">
+            <h2>Administration</h2>
+          </header>
+          <div class="quick-actions">
+            <el-button v-if="capabilities.usersRead" @click="navigateTo('/users')">Users</el-button>
+            <el-button v-if="capabilities.applicationsRead" @click="navigateTo('/applications')">
+              Applications
+            </el-button>
+            <el-button v-if="capabilities.tagsRead" @click="navigateTo('/tags')">Tags</el-button>
+          </div>
+        </section>
+      </div>
+    </template>
   </section>
 </template>
 
 <style scoped>
 .overview {
-  container-type: inline-size;
   display: grid;
-  gap: 28px;
-  max-width: 1440px;
-  margin-inline: auto;
+  gap: 20px;
 }
 
-.overview > .page-header {
-  margin-bottom: 0;
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.workspace-tools h2,
-.workspace-admin h2 {
+.kpi-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 16px;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.kpi-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.kpi-card__icon {
+  display: grid;
+  grid-row: span 2;
+  width: 40px;
+  height: 40px;
+  color: var(--accent);
+  background: var(--el-color-primary-light-9);
+  border-radius: var(--radius-md);
+  font-size: 19px;
+  place-items: center;
+}
+
+.kpi-card.is-amber .kpi-card__icon {
+  color: var(--status-warning);
+  background: var(--el-color-warning-light-9);
+}
+
+.kpi-card.is-green .kpi-card__icon {
+  color: var(--status-success);
+  background: var(--el-color-success-light-9);
+}
+
+.kpi-card.is-red .kpi-card__icon {
+  color: var(--status-danger);
+  background: var(--el-color-danger-light-9);
+}
+
+.kpi-card__value {
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.kpi-card__label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.overview-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px;
+}
+
+.overview-panel--wide {
+  grid-column: 1 / -1;
+}
+
+.overview-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.overview-panel__header h2 {
   margin: 0;
-  color: var(--el-text-color-primary);
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 650;
 }
 
-.workspace-tools__grid {
+.overview-panel__header a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.overview-panel__header a:hover {
+  color: var(--accent);
+}
+
+.overview-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 12px 0 0;
+  gap: 6px;
+}
+
+.overview-empty {
+  margin: 8px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.upcoming-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.workspace-tool {
-  display: block;
-  height: 100%;
-  padding: 18px;
-  color: var(--el-text-color-primary);
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
+.upcoming-list a {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  color: var(--text-primary);
   text-decoration: none;
+  border-radius: var(--radius-sm);
 }
 
-.workspace-tool__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--el-text-color-regular);
-  font-size: 16px;
+.upcoming-list a:hover {
+  background: var(--surface-subtle);
 }
 
-.workspace-tool__icon {
-  width: 40px;
-  height: 40px;
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  border-radius: 8px;
-  font-size: 20px;
-}
-
-.workspace-tool__access {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.upcoming-date {
+  color: var(--text-muted);
   font-size: 12px;
 }
 
-.workspace-tool h3 {
-  margin: 12px 0 4px;
-  color: var(--el-text-color-primary);
-  font-size: 16px;
-  font-weight: 650;
+.upcoming-main {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
 }
 
-.workspace-tool p {
+.upcoming-main strong,
+.upcoming-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upcoming-main strong {
+  font-size: 13px;
+}
+
+.upcoming-main small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.overview__signin {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  max-width: 520px;
+  padding: 28px;
+}
+
+.overview__signin h2 {
   margin: 0;
-  color: var(--el-text-color-regular);
-  font-size: 14px;
+  font-size: 20px;
+}
+
+.overview__signin p {
+  margin: 0;
+  color: var(--text-muted);
   line-height: 1.55;
 }
 
-a.workspace-tool:hover {
-  border-color: var(--el-color-primary);
+.overview__signin-mark {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: 12px;
+  font-size: 22px;
+  font-weight: 700;
+  place-items: center;
 }
 
-.workspace-tool:focus-visible,
-.workspace-admin a:focus-visible {
-  outline: 2px solid var(--el-color-primary-dark-2);
-  outline-offset: 3px;
-}
-
-.workspace-admin {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 18px;
-  padding-top: 12px;
-  border-top: 1px solid var(--el-border-color-light);
-}
-
-.workspace-admin h2 {
-  font-size: 14px;
-}
-
-.workspace-admin a {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  color: var(--el-text-color-regular);
-  font-size: 14px;
-  text-decoration: none;
-}
-
-.workspace-admin a:hover {
-  color: var(--el-text-color-primary);
-  text-decoration: underline;
-}
-
-@container (max-width: 620px) {
-  .workspace-tools__grid {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 1023px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
+@media (max-width: 767px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-card {
+    padding: 12px;
+  }
+
+  .kpi-card__value {
+    font-size: 21px;
+  }
+
+  .upcoming-list a {
+    grid-template-columns: 82px minmax(0, 1fr);
+  }
+}
 </style>

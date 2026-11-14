@@ -3,6 +3,7 @@ import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import {
   localDateOnly,
   type ProjectSummary,
+  type TaskTemplateView,
   type TaskView,
   type UserSummary,
 } from "~/shared/contracts";
@@ -21,6 +22,8 @@ const formRef = ref<FormInstance>();
 const submitting = ref(false);
 const requestError = shallowRef<unknown>(null);
 const selectedMembers = ref<UserSummary[]>([]);
+const templates = ref<TaskTemplateView[]>([]);
+const templateId = ref("");
 const form = reactive({
   title: "",
   description: "",
@@ -61,6 +64,42 @@ function disablePastDueDates(value: Date) {
   return value.getTime() < today.getTime();
 }
 
+function offsetDate(days: number | null) {
+  if (days === null) return null;
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return localDateOnly(date);
+}
+
+function applyTemplate() {
+  const template = templates.value.find((item) => item.id === templateId.value);
+  if (!template) return;
+  form.title = template.title;
+  form.description = template.description;
+  form.dueDate = offsetDate(template.dueOffsetDays);
+  form.tags = [...template.tags];
+  selectedMembers.value = template.memberIds
+    .map((memberId) => project.value?.members.find((member) => member.userId === memberId))
+    .filter((member): member is NonNullable<typeof member> => Boolean(member))
+    .map((member) => ({
+      id: member.userId,
+      displayName: member.displayName,
+      email: "",
+      image: member.image,
+    }));
+}
+
+async function loadTemplates() {
+  try {
+    const response = await $fetch<{ templates: TaskTemplateView[] }>(
+      `/api/projects/${encodeURIComponent(projectId.value)}/task-templates`,
+    );
+    templates.value = response.templates;
+  } catch {
+    templates.value = [];
+  }
+}
+
 async function createTask() {
   if (!canCreate.value || submitting.value) return;
   const valid = await formRef.value?.validate().catch(() => false);
@@ -87,25 +126,22 @@ async function createTask() {
     submitting.value = false;
   }
 }
+
+onMounted(loadTemplates);
+
+useHead({ title: "New task · DevConnect" });
 </script>
 
 <template>
-  <section v-loading="pending">
-    <header class="page-header">
-      <el-link
-        :underline="false"
-        :href="`/projects/${encodeURIComponent(projectId)}#tasks`"
-      >
-        {{ project?.name ?? "Project" }} tasks
-      </el-link>
-      <h1>Create a task</h1>
-      <p>Create and assign work for this project.</p>
-    </header>
-
-    <BackendErrorDetails
-      v-if="error || requestError"
-      :error="requestError || error"
+  <section v-loading="pending" class="page">
+    <PageHeader
+      title="Create a task"
+      :description="`Add work to ${project?.name ?? 'this project'}.`"
+      :back-to="`/projects/${encodeURIComponent(projectId)}#tasks`"
+      back-label="Project tasks"
     />
+
+    <BackendErrorDetails v-if="error || requestError" :error="requestError || error" />
     <AccessDenied
       v-else-if="project && !canCreate"
       title="Task creation unavailable"
@@ -121,6 +157,14 @@ async function createTask() {
       label-position="top"
       @submit.prevent="createTask"
     >
+      <el-form-item v-if="templates.length" label="Start from a template">
+        <div class="template-row">
+          <el-select v-model="templateId" clearable placeholder="Choose a template" @change="applyTemplate">
+            <el-option v-for="template in templates" :key="template.id" :label="template.name" :value="template.id" />
+          </el-select>
+          <span class="muted">Templates fill the title, description, tags, assignees, and due date.</span>
+        </div>
+      </el-form-item>
       <el-form-item label="Project">
         <el-input :model-value="project.name" disabled />
       </el-form-item>
@@ -128,19 +172,10 @@ async function createTask() {
         <el-input v-model="form.title" maxlength="120" show-word-limit autofocus />
       </el-form-item>
       <el-form-item label="Members">
-        <UsersInput
-          v-model="selectedMembers"
-          :project-id="projectId"
-          placeholder="Search project members to assign"
-        />
+        <UsersInput v-model="selectedMembers" :project-id="projectId" placeholder="Search project members to assign" />
       </el-form-item>
       <el-form-item label="Tags" prop="tags">
-        <SharedInputTag
-          v-model="form.tags"
-          :max="20"
-          clearable
-          placeholder="Search for a tag"
-        />
+        <SharedInputTag v-model="form.tags" :max="20" clearable placeholder="Search for a tag" />
       </el-form-item>
       <el-form-item label="Description" prop="description">
         <MarkdownEditor v-model="form.description" :maxlength="50_000" />
@@ -156,16 +191,10 @@ async function createTask() {
         />
       </el-form-item>
       <div class="form-actions">
-        <el-button
-          tag="a"
-          :href="`/projects/${encodeURIComponent(projectId)}#tasks`"
-          :disabled="submitting"
-        >
+        <el-button tag="a" :href="`/projects/${encodeURIComponent(projectId)}#tasks`" :disabled="submitting">
           Cancel
         </el-button>
-        <el-button type="primary" native-type="submit" :loading="submitting">
-          Create task
-        </el-button>
+        <el-button type="primary" native-type="submit" :loading="submitting">Create task</el-button>
       </div>
     </el-form>
   </section>
@@ -180,6 +209,13 @@ async function createTask() {
   width: 100%;
 }
 
+.template-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -188,6 +224,10 @@ async function createTask() {
 }
 
 @media (max-width: 600px) {
+  .template-row {
+    grid-template-columns: 1fr;
+  }
+
   .form-actions {
     flex-direction: column-reverse;
   }
