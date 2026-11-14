@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { useDatabase } from "../server/database/client";
+import { databasePool, useDatabase } from "../server/database/client";
 import { projectMembers, projects, tasks } from "../server/database/schema";
 import { getProjectDetail } from "../server/services/projects";
 import type { AuthenticatedRequest } from "../server/utils/api-auth";
 import { PortalPermissions, ProjectPermissions } from "../shared/permissions";
 
-const hasDatabase = Boolean(process.env.DATABASE_URL);
+const hasDatabase =
+  Boolean(process.env.DATABASE_URL) &&
+  (await databasePool()
+    .query("select 1")
+    .then(() => true)
+    .catch(() => false));
 
 describe.skipIf(!hasDatabase)("project task visibility", () => {
   test("does not disclose task records without task-read access", async () => {

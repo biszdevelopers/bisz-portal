@@ -4,7 +4,12 @@ import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { databasePool } from "../server/database/client";
 import { portalAccessToken, savePortalTokens } from "../server/utils/portal-auth-tokens";
 
-const hasDatabase = Boolean(process.env.DATABASE_URL && process.env.NUXT_SESSION_PASSWORD);
+const hasDatabase =
+  Boolean(process.env.DATABASE_URL && process.env.NUXT_SESSION_PASSWORD) &&
+  (await databasePool()
+    .query("select 1")
+    .then(() => true)
+    .catch(() => false));
 
 describe.skipIf(!hasDatabase)("portal token renewal", () => {
   const original = {
