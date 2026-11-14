@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { getHeader, setResponseHeaders } from "h3";
+import { isCsrfExemptPath, isSameOriginRequest } from "~/server/utils/csrf";
 
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -15,11 +16,13 @@ export default defineEventHandler((event) => {
   if (
     path.startsWith("/api/") &&
     unsafeMethods.has(method) &&
-    !path.startsWith("/api/auth/")
+    !isCsrfExemptPath(path)
   ) {
-    const sameOrigin =
-      (!origin || origin === portalOrigin) &&
-      fetchSite !== "cross-site";
+    const sameOrigin = isSameOriginRequest({
+      origin,
+      fetchSite,
+      portalOrigin,
+    });
     if (!sameOrigin) {
       setResponseStatus(event, 403);
       return {
