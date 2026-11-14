@@ -2,7 +2,7 @@ import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import type { AuthenticatedRequest } from "~/server/utils/api-auth";
 import { useDatabase } from "~/server/database/client";
 import { projectMembers, projects, tasks } from "~/server/database/schema";
-import { findBasisUser, type BasisUserView } from "~/server/utils/basis-users";
+import { findBasisUsers, type BasisUserView } from "~/server/utils/basis-users";
 import { projectCapabilities } from "~/server/utils/authorization";
 import { taskTagViewsByTaskId } from "~/server/services/task-tags";
 import { taskMemberViewsByTaskId } from "~/server/services/task-members";
@@ -17,16 +17,70 @@ function iso(value: Date) {
 }
 
 async function resolveUsers(userIds: string[]) {
-  const entries = await Promise.all(
-    userIds.map(async (id) => {
-      try {
-        return [id, await findBasisUser(id)] as const;
-      } catch {
-        return [id, null] as const;
-      }
-    }),
+  return (await findBasisUsers(userIds)) as Map<
+    string,
+    BasisUserView | null
+  >;
+}
+
+function memberView(
+  member: typeof projectMembers.$inferSelect,
+  auth: AuthenticatedRequest,
+  users: Map<string, BasisUserView | null>,
+): ProjectMemberView {
+  const user = users.get(member.userId);
+  return {
+    userId: member.userId,
+    displayName:
+      user?.displayName ??
+      (member.userId === auth.user.id
+        ? auth.user.name || "Basis user"
+        : "Basis user"),
+    image:
+      user?.image ??
+      (member.userId === auth.user.id ? auth.user.image : null),
+    role: member.role,
+    permissions: member.permissions,
+    joinedAt: iso(member.createdAt),
+  };
+}
+
+async function taskStats(projectIds: string[]) {
+  if (!projectIds.length) return new Map<string, {
+    total: number;
+    completed: number;
+    reviewTaskId: string | null;
+  }>();
+  const rows = await useDatabase()
+    .select({
+      projectId: tasks.projectId,
+      value: count(),
+      completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')::int`,
+      reviewTaskId: sql<string | null>`max(${tasks.id}::text) filter (where ${tasks.status} = 'in_review')`,
+    })
+    .from(tasks)
+    .where(inArray(tasks.projectId, projectIds))
+    .groupBy(tasks.projectId);
+  return new Map(
+    rows.map((row) => [
+      row.projectId,
+      {
+        total: Number(row.value),
+        completed: Number(row.completed),
+        reviewTaskId: row.reviewTaskId ?? null,
+      },
+    ]),
   );
-  return new Map<string, BasisUserView | null>(entries);
+}
+
+export async function visibleProjectIds(auth: AuthenticatedRequest) {
+  const rows = await useDatabase()
+    .select()
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, auth.user.id));
+  return rows
+    .filter((membership) => projectCapabilities(auth, membership).read)
+    .map((membership) => membership.projectId);
 }
 
 export async function listProjectSummaries(
@@ -44,46 +98,36 @@ export async function listProjectSummaries(
   );
   if (!visible.length) return [];
   const ids = visible.map(({ project }) => project.id);
-  const membershipRows = await db
-    .select()
-    .from(projectMembers)
-    .where(inArray(projectMembers.projectId, ids));
+  const [membershipRows, stats] = await Promise.all([
+    db
+      .select()
+      .from(projectMembers)
+      .where(inArray(projectMembers.projectId, ids)),
+    taskStats(ids),
+  ]);
   const users = await resolveUsers([
     ...new Set(membershipRows.map((member) => member.userId)),
   ]);
-  const taskCounts = await db
-    .select({
-      projectId: tasks.projectId,
-      value: count(),
-      completed: sql<number>`count(*) filter (where ${tasks.status} = 'done')::int`,
-      reviewTaskId: sql<string | null>`max(${tasks.id}::text) filter (where ${tasks.status} = 'in_review')`,
-    })
-    .from(tasks)
-    .where(inArray(tasks.projectId, ids))
-    .groupBy(tasks.projectId);
   const membersByProject = new Map<string, ProjectMemberView[]>();
   for (const member of membershipRows) {
     const memberList = membersByProject.get(member.projectId) ?? [];
-    const user = users.get(member.userId);
-    memberList.push({
-      userId: member.userId,
-      displayName:
-        user?.displayName ??
-        (member.userId === auth.user.id
-          ? auth.user.name || "Basis user"
-          : "Basis user"),
-      image:
-        user?.image ??
-        (member.userId === auth.user.id ? auth.user.image : null),
-      role: member.role,
-      permissions: member.permissions,
-      joinedAt: iso(member.createdAt),
-    });
+    memberList.push(memberView(member, auth, users));
     membersByProject.set(member.projectId, memberList);
   }
-  const taskMap = new Map(taskCounts.map((entry) => [entry.projectId, entry]));
 
   return visible.map(({ project, membership }) => ({
+    ...summaryBase(project, membership, membersByProject.get(project.id) ?? [], stats.get(project.id)),
+    capabilities: projectCapabilities(auth, membership),
+  }));
+}
+
+function summaryBase(
+  project: typeof projects.$inferSelect,
+  membership: typeof projectMembers.$inferSelect,
+  members: ProjectMemberView[],
+  stats: { total: number; completed: number; reviewTaskId: string | null } | undefined,
+): Omit<ProjectSummary, "capabilities"> {
+  return {
     id: project.id,
     name: project.name,
     slug: project.slug,
@@ -94,27 +138,64 @@ export async function listProjectSummaries(
     creatorId: project.creatorId,
     createdAt: iso(project.createdAt),
     updatedAt: iso(project.updatedAt),
-    memberCount: membersByProject.get(project.id)?.length ?? 0,
-    taskCount: Number(taskMap.get(project.id)?.value ?? 0),
-    completedTaskCount: Number(taskMap.get(project.id)?.completed ?? 0),
-    reviewTaskId: taskMap.get(project.id)?.reviewTaskId ?? null,
-    reviewLocked: Boolean(taskMap.get(project.id)?.reviewTaskId),
-    members: membersByProject.get(project.id) ?? [],
-    capabilities: projectCapabilities(auth, membership),
-  }));
+    memberCount: members.length,
+    taskCount: stats?.total ?? 0,
+    completedTaskCount: stats?.completed ?? 0,
+    reviewTaskId: stats?.reviewTaskId ?? null,
+    reviewLocked: Boolean(stats?.reviewTaskId),
+    members,
+  };
+}
+
+export async function getProjectSummary(
+  auth: AuthenticatedRequest,
+  projectId: string,
+): Promise<ProjectSummary | null> {
+  const db = useDatabase();
+  const [row] = await db
+    .select({ project: projects, membership: projectMembers })
+    .from(projects)
+    .innerJoin(
+      projectMembers,
+      and(
+        eq(projectMembers.projectId, projects.id),
+        eq(projectMembers.userId, auth.user.id),
+      ),
+    )
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!row) return null;
+  const capabilities = projectCapabilities(auth, row.membership);
+  if (!capabilities.read) return null;
+  const [membershipRows, stats] = await Promise.all([
+    db
+      .select()
+      .from(projectMembers)
+      .where(eq(projectMembers.projectId, projectId)),
+    taskStats([projectId]),
+  ]);
+  const users = await resolveUsers([
+    ...new Set(membershipRows.map((member) => member.userId)),
+  ]);
+  return {
+    ...summaryBase(
+      row.project,
+      row.membership,
+      membershipRows.map((member) => memberView(member, auth, users)),
+      stats.get(projectId),
+    ),
+    capabilities,
+  };
 }
 
 export async function getProjectDetail(
   auth: AuthenticatedRequest,
   projectId: string,
 ) {
-  const summary = (await listProjectSummaries(auth)).find(
-    (item) => item.id === projectId,
-  );
+  const summary = await getProjectSummary(auth, projectId);
   if (!summary) return null;
-  const db = useDatabase();
   const taskRows = summary.capabilities.readTasks
-    ? await db
+    ? await useDatabase()
         .select({ task: tasks, projectName: projects.name })
         .from(tasks)
         .innerJoin(projects, eq(tasks.projectId, projects.id))

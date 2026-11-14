@@ -23,7 +23,10 @@ function issuerJwks(issuer: string) {
 function encryptionKey() {
   return createHash("sha256")
     .update("bisz-portal:portal-oauth-tokens:v1\0")
-    .update(requiredEnvironment("NUXT_SESSION_PASSWORD"))
+    .update(
+      process.env.NUXT_SESSION_PASSWORD ??
+        requiredEnvironment("NUXT_APP_SECRET"),
+    )
     .digest();
 }
 
@@ -81,6 +84,33 @@ export async function deletePortalTokens(sessionId: string) {
   await databasePool().query("DELETE FROM portal_auth_tokens WHERE session_id = $1", [sessionId]);
 }
 
+export async function revokePortalSession(event: H3Event) {
+  const session = await getUserSession(event);
+  const sessionId = session.secure?.basisSessionId;
+  const userId = session.user?.id;
+  if (sessionId && typeof userId === "string") {
+    const result = await databasePool()
+      .query<{ refresh_token: string }>(
+        "SELECT refresh_token FROM portal_auth_tokens WHERE session_id = $1 AND user_id = $2",
+        [sessionId, userId],
+      )
+      .catch(() => null);
+    const refreshToken = result?.rows[0]?.refresh_token;
+    if (refreshToken) {
+      try {
+        await oidc.tokenRevocation(
+          await basisOidcConfiguration(),
+          unseal(refreshToken, sessionId, userId),
+        );
+      } catch {
+        // Local sign-out must still succeed when Auth is unavailable.
+      }
+    }
+    await deletePortalTokens(sessionId).catch(() => undefined);
+  }
+  await clearUserSession(event);
+}
+
 async function migrateLegacySession(event: H3Event, session: Awaited<ReturnType<typeof getUserSession>>) {
   const userId = session.user?.id;
   const accessToken = session.secure?.basisAccessToken;
@@ -125,20 +155,68 @@ export async function portalAccessToken(event: H3Event): Promise<string | APIErr
     return new APIError("invalid_session", "The session is invalid", 401, "invalid_session");
   }
 
-  const client = await databasePool().connect().catch(() => null);
-  if (!client)
-    return new APIError("auth_unavailable", "Could not read the DevConnect session", 502, "auth_unavailable");
+  const pool = databasePool();
   let clearSession = false;
+  try {
+    const fast = await pool.query<{
+      user_id: string;
+      access_token: string;
+      expires_at: Date;
+    }>(
+      "SELECT user_id, access_token, expires_at FROM portal_auth_tokens WHERE session_id = $1",
+      [sessionId],
+    );
+    const fastRow = fast.rows[0];
+    if (!fastRow || fastRow.user_id !== userId) {
+      clearSession = true;
+      return new APIError(
+        "invalid_session",
+        "The session is invalid",
+        401,
+        "invalid_session",
+      );
+    }
+    if (fastRow.expires_at.getTime() > Date.now() + refreshWindowMs) {
+      return unseal(fastRow.access_token, sessionId, userId);
+    }
+  } catch {
+    return new APIError(
+      "auth_unavailable",
+      "Could not read the DevConnect session",
+      502,
+      "auth_unavailable",
+    );
+  }
+
+  const client = await pool.connect().catch(() => null);
+  if (!client)
+    return new APIError(
+      "auth_unavailable",
+      "Could not read the DevConnect session",
+      502,
+      "auth_unavailable",
+    );
   try {
     await client.query("BEGIN");
     const result = await client.query<{
-      user_id: string; access_token: string; refresh_token: string; expires_at: Date;
-    }>("SELECT user_id, access_token, refresh_token, expires_at FROM portal_auth_tokens WHERE session_id = $1 FOR UPDATE", [sessionId]);
+      user_id: string;
+      access_token: string;
+      refresh_token: string;
+      expires_at: Date;
+    }>(
+      "SELECT user_id, access_token, refresh_token, expires_at FROM portal_auth_tokens WHERE session_id = $1 FOR UPDATE",
+      [sessionId],
+    );
     const row = result.rows[0];
     if (!row || row.user_id !== userId) {
       await client.query("COMMIT");
       clearSession = true;
-      return new APIError("invalid_session", "The session is invalid", 401, "invalid_session");
+      return new APIError(
+        "invalid_session",
+        "The session is invalid",
+        401,
+        "invalid_session",
+      );
     }
     if (row.expires_at.getTime() > Date.now() + refreshWindowMs) {
       const token = unseal(row.access_token, sessionId, userId);
@@ -148,16 +226,22 @@ export async function portalAccessToken(event: H3Event): Promise<string | APIErr
     let refreshConsumed = false;
     try {
       const tokens = await oidc.refreshTokenGrant(
-        await basisOidcConfiguration(), unseal(row.refresh_token, sessionId, userId),
+        await basisOidcConfiguration(),
+        unseal(row.refresh_token, sessionId, userId),
       );
       refreshConsumed = true;
-      if (!tokens.refresh_token) throw new Error("DevConnect did not rotate the refresh token");
+      if (!tokens.refresh_token)
+        throw new Error("DevConnect did not rotate the refresh token");
       const claims = await validatePortalAccessToken(tokens.access_token, userId);
       await client.query(
         `UPDATE portal_auth_tokens SET access_token = $1, refresh_token = $2,
          expires_at = $3, updated_at = now() WHERE session_id = $4`,
-        [seal(tokens.access_token, sessionId, userId), seal(tokens.refresh_token, sessionId, userId),
-          new Date(claims.exp * 1000), sessionId],
+        [
+          seal(tokens.access_token, sessionId, userId),
+          seal(tokens.refresh_token, sessionId, userId),
+          new Date(claims.exp * 1000),
+          sessionId,
+        ],
       );
       await client.query("COMMIT");
       return tokens.access_token;
@@ -165,13 +249,28 @@ export async function portalAccessToken(event: H3Event): Promise<string | APIErr
       await client.query("ROLLBACK");
       if (isInvalidGrant(error) || refreshConsumed) {
         clearSession = true;
-        return new APIError("invalid_session", "DevConnect session expired; sign in again", 401, "invalid_session");
+        return new APIError(
+          "invalid_session",
+          "DevConnect session expired; sign in again",
+          401,
+          "invalid_session",
+        );
       }
-      return new APIError("auth_unavailable", "Could not refresh the DevConnect session", 502, "auth_unavailable");
+      return new APIError(
+        "auth_unavailable",
+        "Could not refresh the DevConnect session",
+        502,
+        "auth_unavailable",
+      );
     }
   } catch {
-    await client.query("ROLLBACK");
-    return new APIError("auth_unavailable", "Could not read the DevConnect session", 502, "auth_unavailable");
+    await client.query("ROLLBACK").catch(() => undefined);
+    return new APIError(
+      "auth_unavailable",
+      "Could not read the DevConnect session",
+      502,
+      "auth_unavailable",
+    );
   } finally {
     client.release();
     if (clearSession) {
