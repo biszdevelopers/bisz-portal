@@ -6,6 +6,7 @@ import {
   FolderOpened,
   Lock,
   Right,
+  SetUp,
   User,
 } from "@element-plus/icons-vue";
 import { NuxtLink } from "#components";
@@ -86,6 +87,12 @@ const adminLinks = computed(() =>
       to: "/applications",
       icon: Connection,
       available: capabilities.value.applicationsRead,
+    },
+    {
+      label: "Resource Servers",
+      to: "/resources",
+      icon: SetUp,
+      available: capabilities.value.resourcesRead,
     },
   ].filter((link) => link.available),
 );

@@ -8,7 +8,7 @@ import { APIError, APIResponse } from "~/server/utils/basis-schema";
 export default defineEventHandler(async (event) => {
   const auth = await requireApplicationRequest(
     event,
-    PortalPermissions.BiszPortal.Applications.read,
+    Object.values(PortalPermissions.BiszPortal.Applications.read),
   );
   if (auth instanceof APIError) return apiResult(event, auth);
   const id = encodeURIComponent(getRouterParam(event, "clientId") ?? "");

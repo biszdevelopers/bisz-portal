@@ -6,7 +6,7 @@ import { APIError } from "~/server/utils/basis-schema";
 
 export async function requireApplicationRequest(
   event: H3Event,
-  permission: Permission,
+  permission: Permission | readonly Permission[],
   mutation = false,
 ) {
   const auth = await requirePortalPermission(event, permission);

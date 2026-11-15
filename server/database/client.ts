@@ -3,14 +3,21 @@ import { Pool } from "pg";
 import * as schema from "./schema";
 
 let pool: Pool | undefined;
+let revocationPool: Pool | undefined;
+
+function createPool(max: number) {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL is required");
+  return new Pool({ connectionString, max });
+}
 
 export function databasePool() {
-  if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) throw new Error("DATABASE_URL is required");
-    pool = new Pool({ connectionString, max: 10 });
-  }
-  return pool;
+  return pool ??= createPool(10);
+}
+
+export function revocationWritePool() {
+  // Basis Auth delivers revocations during refresh, while the portal holds the session connection.
+  return revocationPool ??= createPool(2);
 }
 
 export function useDatabase() {
@@ -18,7 +25,8 @@ export function useDatabase() {
 }
 
 export async function closeDatabase() {
-  if (!pool) return;
-  await pool.end();
+  const closing = Promise.all([pool?.end(), revocationPool?.end()]);
   pool = undefined;
+  revocationPool = undefined;
+  await closing;
 }

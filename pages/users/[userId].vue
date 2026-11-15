@@ -22,7 +22,6 @@ const { data, pending, error } = await useFetch<{ user: UserDetail }>(
 );
 const user = computed(() => data.value?.user);
 const requestError = shallowRef<unknown>(null);
-const activeTab = useHashTab("permissions", ["permissions"]);
 const editDialog = ref(false);
 const profileSaving = ref(false);
 const permissionSaving = ref(false);
@@ -30,7 +29,13 @@ const form = reactive({ displayName: "", disabled: false });
 const permissionGrants = ref<Record<string, string[]>>({});
 const permissionTree = computed(() => buildUserPermissionTree(user.value?.applications ?? []));
 const applicationsById = computed(() => new Map((user.value?.applications ?? []).map((application) => [application.applicationId, application])));
-const editingSelf = computed(() => accessData.value?.user.id === user.value?.id);
+const editingSelf = computed(() => accessData.value?.user.id === userId.value.toLowerCase());
+const sessionsOnly = computed(() => editingSelf.value && !capabilities.value.usersRead);
+const activeTab = useHashTab(sessionsOnly.value ? "sessions" : "permissions", ["permissions", "sessions"]);
+
+watch([sessionsOnly, activeTab], ([onlySessions, tab]) => {
+  if (onlySessions && tab !== "sessions") activeTab.value = "sessions";
+}, { immediate: true });
 
 function openEdit() {
   if (!user.value || !capabilities.value.usersUpdate) return;
@@ -158,10 +163,11 @@ watch(user, (current) => {
     <header class="page-header user-header">
       <div>
         <el-link :underline="false" href="/users">Users</el-link>
-        <h1>{{ user?.displayName?.trim() || "Basis user" }}</h1>
-        <pre v-if="user" class="user-id">{{ user.id }}</pre>
+        <h1>{{ user?.displayName?.trim() || (editingSelf ? accessData?.user.name : null) || "Basis user" }}</h1>
+        <pre v-if="user || editingSelf" class="user-id">{{ userId }}</pre>
       </div>
       <el-tooltip
+        v-if="!sessionsOnly"
         :disabled="capabilities.usersUpdate"
         content="Requires BiszPortal.Users.update"
       >
@@ -178,12 +184,12 @@ watch(user, (current) => {
     </header>
 
     <BackendErrorDetails
-      v-if="error || requestError"
+      v-if="requestError || (error && !(sessionsOnly && error.statusCode === 403))"
       :error="requestError || error"
     />
-    <template v-if="user">
+    <template v-if="user || sessionsOnly">
         <el-tabs v-model="activeTab">
-          <el-tab-pane label="Permissions" name="permissions">
+          <el-tab-pane v-if="user" label="Permissions" name="permissions">
             <div class="tab-toolbar">
               <div class="permission-actions">
                 <el-button
@@ -264,6 +270,13 @@ watch(user, (current) => {
                 </template>
               </el-table-column>
             </el-table>
+          </el-tab-pane>
+          <el-tab-pane label="Sessions" name="sessions" lazy>
+            <UserSessionsTable
+              :key="userId"
+              :user-id="userId"
+              :can-end="editingSelf || capabilities.usersUpdate"
+            />
           </el-tab-pane>
         </el-tabs>
     </template>

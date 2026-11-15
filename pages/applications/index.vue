@@ -12,6 +12,7 @@ const {
   pending: accessPending,
   error: accessError,
 } = usePortalAccess();
+const canCreate = computed(() => capabilities.value.applicationsCreate && capabilities.value.applicationsReadMe);
 const headers = import.meta.server ? useRequestHeaders(["cookie"]) : undefined;
 const { data, pending, error } = await useFetch<{
   applications: ApplicationSummary[];
@@ -91,17 +92,17 @@ async function closeSecret() {
     <header class="page-header applications-header">
       <div>
         <h1>Applications</h1>
-        <p>Manage the DevConnect registrations you belong to.</p>
+        <p>Manage DevConnect application registrations.</p>
       </div>
       <el-tooltip
-        :disabled="capabilities.applicationsCreate"
-        content="Requires BiszPortal.Applications.create"
+        :disabled="canCreate"
+        content="Requires BiszPortal.Applications.create and BiszPortal.Applications.read.me"
       >
         <span
           ><el-button
             type="primary"
             :icon="Plus"
-            :disabled="!capabilities.applicationsCreate"
+            :disabled="!canCreate"
             @click="createDialog = true"
             >New application</el-button
           ></span
@@ -110,18 +111,16 @@ async function closeSecret() {
     </header>
 
     <BackendErrorDetails v-if="requestError" :error="requestError" />
-    <BackendErrorDetails
-      v-if="error || accessError"
-      :error="error || accessError"
-    />
+    <BackendErrorDetails v-if="accessError" :error="accessError" />
     <AccessDenied
       v-else-if="!accessPending && !capabilities.applicationsRead"
-      description="You need BiszPortal.Applications.read and application membership to view registrations."
+      description="You need BiszPortal.Applications.read.me or BiszPortal.Applications.read.others."
     />
-    <el-card v-else shadow="never" v-loading="pending">
+    <BackendErrorDetails v-else-if="error && !accessPending" :error="error" />
+    <el-card v-else shadow="never" v-loading="pending || accessPending">
       <el-table
         :data="applications"
-        empty-text="No applications are assigned to you"
+        empty-text="No applications are available to you"
         @row-click="openApplication"
       >
         <el-table-column prop="name" label="Application" min-width="240" />

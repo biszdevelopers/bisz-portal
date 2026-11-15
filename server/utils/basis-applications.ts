@@ -2,6 +2,7 @@ import type { H3Event } from "h3";
 import type { AuthenticatedRequest } from "~/server/utils/api-auth";
 import { APIError } from "~/server/utils/basis-schema";
 import { basisPortalOrigin } from "~/server/utils/basis-auth";
+import { basisInternalFetch } from "~/server/utils/basis-internal";
 
 export function requireSameOrigin(event: H3Event) {
   const origin = getHeader(event, "origin");
@@ -24,18 +25,11 @@ export async function basisApplicationsRequest<T>(
   path: string,
   options: { method?: string; body?: unknown } = {},
 ): Promise<T | APIError> {
-  const baseUrl = process.env.BASIS_AUTH_INTERNAL_URL;
-  const token = process.env.BASIS_AUTH_INTERNAL_TOKEN;
-  if (!baseUrl || !token)
-    throw new Error(
-      "BASIS_AUTH_INTERNAL_URL and BASIS_AUTH_INTERNAL_TOKEN are required",
-    );
-  const response = await fetch(
-    `${baseUrl.replace(/\/$/, "")}/internal${path}`,
+  const response = await basisInternalFetch(
+    path,
     {
       method: options.method ?? "GET",
       headers: {
-        authorization: `Bearer ${token}`,
         "x-basis-actor-token": `Bearer ${auth.accessToken}`,
         ...(options.body === undefined
           ? {}

@@ -74,16 +74,20 @@ describe("portal and project authorization", () => {
 
   test("maps granular application permissions and wildcard grants", () => {
     const scoped = portalCapabilities([
-      PortalPermissions.BiszPortal.Applications.read,
-      PortalPermissions.BiszPortal.ApplicationScopes.manage,
+      PortalPermissions.BiszPortal.Applications.read.others,
+      PortalPermissions.BiszPortal.ApplicationResources.manage,
+      "BiszPortal.Resources.read.all",
     ]);
     expect(scoped.applicationsRead).toBe(true);
-    expect(scoped.applicationScopesManage).toBe(true);
+    expect(scoped.applicationsReadMe).toBe(false);
+    expect(scoped.applicationResourcesManage).toBe(true);
+    expect(scoped.resourcesRead).toBe(true);
     expect(scoped.applicationOwnersManage).toBe(false);
     const wildcard = portalCapabilities(["BiszPortal.all"]);
     expect(wildcard.applicationOwnersManage).toBe(true);
     expect(wildcard.applicationRedirectUrisManage).toBe(true);
     expect(wildcard.applicationsCreate).toBe(true);
+    expect(wildcard.applicationsReadMe).toBe(true);
     expect(wildcard.applicationsDelete).toBe(true);
     expect(wildcard.applicationCredentialsManage).toBe(true);
     expect(wildcard.tagsRead).toBe(true);

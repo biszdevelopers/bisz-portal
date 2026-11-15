@@ -11,6 +11,7 @@ import {
   Monitor,
   Moon,
   Right,
+  SetUp,
   Sunny,
   SwitchButton,
   User as UserIcon,
@@ -97,16 +98,26 @@ const navigation = computed(() => [
     path: "/applications",
     icon: Connection,
     enabled: capabilities.value.applicationsRead,
-    permission: "BiszPortal.Applications.read",
+    permission: "BiszPortal.Applications.read.me or BiszPortal.Applications.read.others",
+  },
+  {
+    label: "Resource Servers",
+    path: "/resources",
+    icon: SetUp,
+    enabled: capabilities.value.resourcesRead,
+    permission: "BiszPortal.Resources.read.me or BiszPortal.Resources.read.others",
   },
   { label: "Assets", path: "/assets", icon: Collection },
 ]);
 
+const activeNavigationPath = computed(() =>
+  route.path.startsWith("/resources/") ? "/resources" : route.path,
+);
 const pageTitle = computed(
   () =>
     navigation.value.find(
       (item) =>
-        route.path === item.path || route.path.startsWith(`${item.path}/`),
+        activeNavigationPath.value === item.path || activeNavigationPath.value.startsWith(`${item.path}/`),
     )?.label ?? "Portal",
 );
 
@@ -163,7 +174,7 @@ async function logout() {
         <span>DevConnect</span>
       </NuxtLink>
 
-      <el-menu class="portal-menu" :default-active="route.path">
+      <el-menu class="portal-menu" :default-active="activeNavigationPath">
         <el-tooltip
           v-for="item in navigation"
           :key="item.path"

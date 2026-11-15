@@ -10,7 +10,7 @@ import { parseBody } from "~/server/utils/request";
 
 export async function proxyApplicationMutation(
   event: H3Event,
-  permission: Permission,
+  permission: Permission | readonly Permission[],
   suffix: string,
   method: string,
   schema?: ZodType,

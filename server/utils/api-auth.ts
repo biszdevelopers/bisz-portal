@@ -4,7 +4,7 @@ import {
   APIError,
   type AccessTokenClaims,
 } from "~/server/utils/basis-schema";
-import { portalAccessToken, validatePortalAccessToken } from "~/server/utils/portal-auth-tokens";
+import { invalidPortalAccessToken, portalAccessToken, validatePortalAccessToken } from "~/server/utils/portal-auth-tokens";
 
 export type AuthenticatedRequest = {
   accessToken: string;
@@ -25,7 +25,7 @@ export async function authenticateRequest(
     const session = await getUserSession(event);
     const userId = session.user?.id;
     if (typeof userId !== "string")
-      return new APIError("invalid_session", "The session is invalid", 401, "invalid_session");
+      return invalidPortalAccessToken();
     const claims = await validatePortalAccessToken(accessToken, userId);
 
     return {
@@ -39,11 +39,6 @@ export async function authenticateRequest(
       },
     };
   } catch {
-    return new APIError(
-      "invalid_session",
-      "The session is invalid or expired",
-      401,
-      "invalid_session",
-    );
+    return invalidPortalAccessToken();
   }
 }

@@ -13,10 +13,19 @@ export const PortalPermissions = definePermissionTree({
     Incidents: { read: true, create: true, update: true },
     Calendar: { read: true },
     Users: { read: true, update: true },
-    Applications: { read: true, create: true, update: true, delete: true },
+    Applications: {
+      read: { me: true, others: true },
+      create: true,
+      update: { me: true, others: true },
+      delete: { me: true, others: true },
+    },
+    Resources: {
+      read: { me: true, others: true },
+      update: { me: true, others: true },
+      delete: { me: true, others: true },
+    },
     ApplicationOwners: { manage: true },
     ApplicationResources: { manage: true },
-    ApplicationScopes: { manage: true },
     ApplicationPermissions: { manage: true },
     ApplicationRedirectUris: { manage: true },
     ApplicationCredentials: { manage: true },
@@ -76,12 +85,13 @@ export type PortalCapabilities = {
   usersRead: boolean;
   usersUpdate: boolean;
   applicationsRead: boolean;
+  applicationsReadMe: boolean;
   applicationsCreate: boolean;
   applicationsUpdate: boolean;
   applicationsDelete: boolean;
   applicationOwnersManage: boolean;
   applicationResourcesManage: boolean;
-  applicationScopesManage: boolean;
+  resourcesRead: boolean;
   applicationPermissionsManage: boolean;
   applicationRedirectUrisManage: boolean;
   applicationCredentialsManage: boolean;
@@ -123,12 +133,13 @@ export const emptyPortalCapabilities: PortalCapabilities = {
   usersRead: false,
   usersUpdate: false,
   applicationsRead: false,
+  applicationsReadMe: false,
   applicationsCreate: false,
   applicationsUpdate: false,
   applicationsDelete: false,
   applicationOwnersManage: false,
   applicationResourcesManage: false,
-  applicationScopesManage: false,
+  resourcesRead: false,
   applicationPermissionsManage: false,
   applicationRedirectUrisManage: false,
   applicationCredentialsManage: false,
