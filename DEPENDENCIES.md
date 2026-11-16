@@ -635,6 +635,9 @@ Everything else is bundled in the portal or owned by the services above.
 
 ## 14. Running the portal on its own server
 
+See [`EXTERNAL_REQUIREMENTS.md`](./EXTERNAL_REQUIREMENTS.md) for the full
+Server A (Auth) / Server B (Assets + Portal) contract and migration runbook.
+
 The portal can run on a host that is separate from Basis Auth and DevConnect
 Assets. The browser always talks to the public portal origin; all service-to-
 service traffic uses the URLs below.
