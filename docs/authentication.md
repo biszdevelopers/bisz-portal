@@ -16,6 +16,16 @@ The client requests `openid profile email offline_access noesis.access` for the 
 
 The portal's `BASIS_AUTH_CLIENT_ID` and `BASIS_AUTH_RESOURCE` must match Basis Auth's `MANAGEMENT_PORTAL_CLIENT_ID` and `MANAGEMENT_PORTAL_AUDIENCE`. The portal scope is `noesis.access`, matching `MANAGEMENT_PORTAL_SCOPE`. Basis Auth validates those three actor-token properties before any internal application-management operation runs.
 
+Set the server-only `BASIS_AUTH_RESOURCE_SECRET` to the secret for `BASIS_AUTH_RESOURCE`. To rotate it, use **Rotate secret** in that resource's **Secret** tab and copy the value Basis Auth issues. Update the portal environment immediately and reload it so internal API requests use the new credential.
+
+## Basis Auth backchannel
+
+Apply the portal database migrations with `bun run db:migrate` before starting the updated portal. Set `BASIS_AUTH_INTERNAL_URL` to the Basis Auth internal listener. In **Resource Servers → Backchannel**, register `${BASIS_PORTAL_ORIGIN}/api/auth/backchannel-logout` for `BASIS_AUTH_RESOURCE`, using the actual portal origin. Basis Auth must be able to reach that URL over HTTPS or over HTTP with the hostname `localhost`. For initial setup before portal sign-in works, set `backchannelLogoutUri` in the resource's `OIDC_RESOURCES_JSON` entry on Basis Auth.
+
+The portal answers webhook challenges using the configured resource secret. It verifies signed logout events and ends the subject's local sessions. Signed access-token revocations are stored by JTI in the shared PostgreSQL denylist and take effect at `valid_after`. An hourly cleanup removes entries that are at least one hour past issuance and whose signed access-token expiration, when available, has passed.
+
+The **Sessions** tab on `/users/<uid>` lists active Basis Auth authorization sessions across resources. Users can manage their own sessions. Viewing another user's sessions requires `BiszPortal.Users.read`, and ending one requires `BiszPortal.Users.update`. Force ending a session asks Basis Auth to disable its refresh grant and send an immediate access-token revocation to that session's resource. The portal rejects the revoked JTI during normal authentication and returns `401 invalid_session` on subsequent requests using that token.
+
 ## Application API requirements
 
 Every BISZ Portal application endpoint under `server/api` must:
@@ -26,7 +36,7 @@ Every BISZ Portal application endpoint under `server/api` must:
 4. Return `APIResponse` or `APIError` envelopes from `@basis/schema/api` through `apiResult`.
 5. Treat `noesis.access` as access only, never as a permission.
 
-The OIDC handler under `/api/auth/callback/basis-auth` is the sole format exception: its redirects and errors follow the OIDC protocol rather than the application API envelope.
+The OIDC handler under `/api/auth/callback/basis-auth` and the Basis Auth webhook under `/api/auth/backchannel-logout` follow their protocol response formats.
 
 Use `authenticateRequest` and `apiResult` instead of reimplementing these rules:
 
@@ -60,7 +70,7 @@ Errors use the corresponding schema:
   "status": 401,
   "code": "invalid_session",
   "error": "invalid_session",
-  "error_description": "An authenticated session is required"
+  "error_description": "Invalid access token"
 }
 ```
 

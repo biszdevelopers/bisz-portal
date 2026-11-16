@@ -6,6 +6,7 @@ import {
   FolderAdd,
   FolderOpened,
   Right,
+  SetUp,
   WarningFilled,
 } from "@element-plus/icons-vue";
 import type { OverviewResponse } from "~/shared/contracts";
@@ -197,7 +198,10 @@ useHead({ title: "Overview · DevConnect" });
           </div>
         </section>
 
-        <section v-if="capabilities.applicationsRead || capabilities.usersRead" class="overview-panel surface">
+        <section
+          v-if="capabilities.applicationsRead || capabilities.usersRead || capabilities.resourcesRead"
+          class="overview-panel surface"
+        >
           <header class="overview-panel__header">
             <h2>Administration</h2>
           </header>
@@ -205,6 +209,9 @@ useHead({ title: "Overview · DevConnect" });
             <el-button v-if="capabilities.usersRead" @click="navigateTo('/users')">Users</el-button>
             <el-button v-if="capabilities.applicationsRead" @click="navigateTo('/applications')">
               Applications
+            </el-button>
+            <el-button v-if="capabilities.resourcesRead" :icon="SetUp" @click="navigateTo('/resources')">
+              Resource Servers
             </el-button>
             <el-button v-if="capabilities.tagsRead" @click="navigateTo('/tags')">Tags</el-button>
           </div>

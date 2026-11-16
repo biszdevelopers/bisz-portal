@@ -7,7 +7,7 @@ The portal stores product data in its own PostgreSQL database. `DATABASE_URL` mu
 1. Create an empty PostgreSQL database and set `DATABASE_URL`.
 2. Set `PORTAL_SEED_OWNER_ID` to a real Basis user UUID.
 3. Run `bun run db:setup`. Migrations are append-only and the seed is idempotent.
-4. Set `BASIS_AUTH_INTERNAL_URL` and `BASIS_AUTH_INTERNAL_TOKEN` so project member UUIDs can be validated by Basis Auth.
+4. Set `BASIS_AUTH_INTERNAL_URL` and `BASIS_AUTH_RESOURCE_SECRET` so project member UUIDs can be validated by Basis Auth. Use the secret registered for `BASIS_AUTH_RESOURCE`.
 
 The portal expects Basis access tokens to contain the relevant `BiszPortal.*` permissions. Project membership permissions are stored separately in `project_members`; both the Basis capability and the project capability must allow an action.
 

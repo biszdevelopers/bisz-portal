@@ -7,7 +7,7 @@ import { APIError, APIResponse } from "~/server/utils/basis-schema";
 export default defineEventHandler(async (event) => {
   const auth = await requireApplicationRequest(
     event,
-    PortalPermissions.BiszPortal.Applications.delete,
+    Object.values(PortalPermissions.BiszPortal.Applications.delete),
     true,
   );
   if (auth instanceof APIError) return apiResult(event, auth);

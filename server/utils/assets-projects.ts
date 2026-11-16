@@ -43,6 +43,7 @@ export async function createAssetsProject(
     response = await fetch(`${baseUrl}/project`, {
       method: "POST",
       redirect: "error",
+      signal: AbortSignal.timeout(10_000),
       cache: "no-store",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -80,6 +81,7 @@ export async function assetsProjectExists(uid: string, baseUrl = assetsApiUrl())
   try {
     const response = await fetch(`${baseUrl}/project`, {
       redirect: "error",
+      signal: AbortSignal.timeout(10_000),
       cache: "no-store",
     });
     if (!response.ok) return null;
@@ -102,6 +104,7 @@ export async function deleteAssetsProject(
       {
         method: "DELETE",
         redirect: "error",
+        signal: AbortSignal.timeout(10_000),
         cache: "no-store",
         headers: { Authorization: `Bearer ${accessToken}` },
       },

@@ -2,6 +2,11 @@ import { getRequestIP, setResponseHeaders, setResponseStatus } from "h3";
 import { rateLimits, type FixedWindowLimiter } from "~/server/utils/rate-limit";
 
 function limiterFor(method: string, path: string): FixedWindowLimiter | null {
+  if (
+    path.startsWith("/api/auth/callback/") ||
+    path === "/api/auth/backchannel-logout"
+  )
+    return rateLimits.auth;
   if (path.startsWith("/api/comments") && method !== "GET")
     return rateLimits.comments;
   if (path.startsWith("/api/search") && method === "GET")

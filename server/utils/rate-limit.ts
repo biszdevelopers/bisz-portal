@@ -52,6 +52,7 @@ export class FixedWindowLimiter {
 }
 
 export const rateLimits = {
+  auth: new FixedWindowLimiter(60, 60_000),
   comments: new FixedWindowLimiter(30, 60_000),
   search: new FixedWindowLimiter(60, 60_000),
   push: new FixedWindowLimiter(10, 60_000),

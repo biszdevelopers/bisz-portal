@@ -1,23 +1,20 @@
 import * as oidc from "openid-client";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
+import { decodeJwt } from "jose";
 import type { H3Event } from "h3";
+import type { PoolClient } from "pg";
 import { databasePool } from "~/server/database/client";
-import { BASIS_PORTAL_SCOPE, basisAuthIssuer, basisPortalAudience, requiredEnvironment } from "~/server/utils/basis-auth";
+import { BASIS_PORTAL_SCOPE, requiredEnvironment } from "~/server/utils/basis-auth";
+import { verifyPortalJwt } from "~/server/utils/basis-jwt";
 import { basisOidcConfiguration } from "~/server/utils/basis-oidc";
 import { APIError, accessTokenClaimsSchema, type AccessTokenClaims } from "~/server/utils/basis-schema";
+import { portalTokenStatus } from "~/server/utils/portal-logout";
 
 type TokenPair = { access_token: string; refresh_token?: string };
 const refreshWindowMs = 60_000;
-const jwksByIssuer = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
-function issuerJwks(issuer: string) {
-  let jwks = jwksByIssuer.get(issuer);
-  if (!jwks) {
-    jwks = createRemoteJWKSet(new URL(`${issuer}/oauth/jwks`));
-    jwksByIssuer.set(issuer, jwks);
-  }
-  return jwks;
+export function invalidPortalAccessToken() {
+  return new APIError("invalid_session", "Invalid access token", 401, "invalid_session");
 }
 
 function encryptionKey() {
@@ -55,12 +52,13 @@ function expectedClaims(payload: unknown, userId: string) {
   return claims;
 }
 
-export async function validatePortalAccessToken(token: string, userId: string): Promise<AccessTokenClaims> {
-  const issuer = basisAuthIssuer();
-  const { payload } = await jwtVerify(token, issuerJwks(issuer), {
-    algorithms: ["RS256"], issuer, audience: basisPortalAudience(), typ: "at+jwt",
-  });
-  return expectedClaims(payload, userId);
+export async function validatePortalAccessToken(
+  token: string, userId: string, database?: Pick<PoolClient, "query">,
+): Promise<AccessTokenClaims> {
+  const claims = expectedClaims(await verifyPortalJwt(token, "at+jwt"), userId);
+  const status = await portalTokenStatus(claims, database);
+  if (status.revoked || status.logged_out) throw new Error("Portal token has been revoked");
+  return claims;
 }
 
 export async function savePortalTokens(sessionId: string, userId: string, tokens: TokenPair) {
@@ -140,19 +138,19 @@ export async function portalAccessToken(event: H3Event): Promise<string | APIErr
   const session = await getUserSession(event);
   const userId = session.user?.id;
   if (typeof userId !== "string")
-    return new APIError("invalid_session", "An authenticated session is required", 401, "invalid_session");
+    return invalidPortalAccessToken();
 
   let sessionId = session.secure?.basisSessionId;
   if (!sessionId) {
     try { sessionId = await migrateLegacySession(event, session) ?? undefined; }
     catch {
       await clearUserSession(event);
-      return new APIError("invalid_session", "The session is invalid", 401, "invalid_session");
+      return invalidPortalAccessToken();
     }
   }
   if (!sessionId) {
     await clearUserSession(event);
-    return new APIError("invalid_session", "The session is invalid", 401, "invalid_session");
+    return invalidPortalAccessToken();
   }
 
   const pool = databasePool();
@@ -168,16 +166,18 @@ export async function portalAccessToken(event: H3Event): Promise<string | APIErr
     );
     const fastRow = fast.rows[0];
     if (!fastRow || fastRow.user_id !== userId) {
-      clearSession = true;
-      return new APIError(
-        "invalid_session",
-        "The session is invalid",
-        401,
-        "invalid_session",
-      );
+      await clearUserSession(event);
+      return invalidPortalAccessToken();
+    }
+    const fastToken = unseal(fastRow.access_token, sessionId, userId);
+    const fastClaims = expectedClaims(decodeJwt(fastToken), userId);
+    const fastStatus = await portalTokenStatus(fastClaims, pool);
+    if (fastStatus.logged_out || fastStatus.revoked) {
+      await clearUserSession(event);
+      return invalidPortalAccessToken();
     }
     if (fastRow.expires_at.getTime() > Date.now() + refreshWindowMs) {
-      return unseal(fastRow.access_token, sessionId, userId);
+      return fastToken;
     }
   } catch {
     return new APIError(
@@ -211,16 +211,22 @@ export async function portalAccessToken(event: H3Event): Promise<string | APIErr
     if (!row || row.user_id !== userId) {
       await client.query("COMMIT");
       clearSession = true;
-      return new APIError(
-        "invalid_session",
-        "The session is invalid",
-        401,
-        "invalid_session",
-      );
+      return invalidPortalAccessToken();
+    }
+
+    const token = unseal(row.access_token, sessionId, userId);
+    const claims = expectedClaims(decodeJwt(token), userId);
+    // Stored tokens were verified at issuance. Re-checking here blocks logged-out
+    // sessions and revoked legacy cookies before they can refresh.
+    const status = await portalTokenStatus(claims, client);
+    if (status.logged_out) {
+      await client.query("COMMIT");
+      clearSession = true;
+      return invalidPortalAccessToken();
     }
     if (row.expires_at.getTime() > Date.now() + refreshWindowMs) {
-      const token = unseal(row.access_token, sessionId, userId);
       await client.query("COMMIT");
+      if (status.revoked) return invalidPortalAccessToken();
       return token;
     }
     let refreshConsumed = false;
@@ -232,7 +238,11 @@ export async function portalAccessToken(event: H3Event): Promise<string | APIErr
       refreshConsumed = true;
       if (!tokens.refresh_token)
         throw new Error("DevConnect did not rotate the refresh token");
-      const claims = await validatePortalAccessToken(tokens.access_token, userId);
+      const claims = await validatePortalAccessToken(
+        tokens.access_token,
+        userId,
+        client,
+      );
       await client.query(
         `UPDATE portal_auth_tokens SET access_token = $1, refresh_token = $2,
          expires_at = $3, updated_at = now() WHERE session_id = $4`,
@@ -249,12 +259,7 @@ export async function portalAccessToken(event: H3Event): Promise<string | APIErr
       await client.query("ROLLBACK");
       if (isInvalidGrant(error) || refreshConsumed) {
         clearSession = true;
-        return new APIError(
-          "invalid_session",
-          "DevConnect session expired; sign in again",
-          401,
-          "invalid_session",
-        );
+        return invalidPortalAccessToken();
       }
       return new APIError(
         "auth_unavailable",

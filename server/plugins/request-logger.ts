@@ -8,7 +8,6 @@ const ignored = [
   "/icons/",
   "/manifest.webmanifest",
   "/sw.js",
-  "/Inter",
 ];
 
 export default defineNitroPlugin((nitroApp) => {

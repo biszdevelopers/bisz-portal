@@ -6,6 +6,10 @@ defineProps<{
   activePath: string;
 }>();
 defineEmits<{ more: [] }>();
+
+function isActive(activePath: string, path: string) {
+  return activePath === path || (path !== "/" && activePath.startsWith(`${path}/`));
+}
 </script>
 
 <template>
@@ -15,8 +19,8 @@ defineEmits<{ more: [] }>();
       :key="item.path"
       :to="item.path"
       class="bottom-nav__item"
-      :class="{ 'is-active': activePath === item.path }"
-      :aria-current="activePath === item.path ? 'page' : undefined"
+      :class="{ 'is-active': isActive(activePath, item.path) }"
+      :aria-current="isActive(activePath, item.path) ? 'page' : undefined"
     >
       <el-icon><component :is="item.icon" /></el-icon>
       <span>{{ item.label }}</span>

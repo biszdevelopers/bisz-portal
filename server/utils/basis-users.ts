@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { basisInternalFetch } from "~/server/utils/basis-internal";
 
 const responseSchema = z.object({
   user: z.object({
@@ -58,19 +59,8 @@ export async function findBasisUser(
   if (pending) return await pending;
 
   const request = (async () => {
-    const baseUrl = process.env.BASIS_AUTH_INTERNAL_URL;
-    const token = process.env.BASIS_AUTH_INTERNAL_TOKEN;
-    if (!baseUrl || !token)
-      throw new Error(
-        "BASIS_AUTH_INTERNAL_URL and BASIS_AUTH_INTERNAL_TOKEN are required",
-      );
-
-    const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/internal/users/${encodeURIComponent(userId)}`,
-      {
-        headers: { authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(8_000),
-      },
+    const response = await basisInternalFetch(
+      `/users/${encodeURIComponent(userId)}`,
     );
     if (response.status === 404) {
       store(userId, null);

@@ -12,6 +12,7 @@ import {
   PriceTag,
   Right,
   Search,
+  SetUp,
   Setting,
   Sunny,
   SwitchButton,
@@ -113,7 +114,14 @@ const navigation = computed(() => [
     path: "/applications",
     icon: Connection,
     enabled: capabilities.value.applicationsRead,
-    permission: "BiszPortal.Applications.read",
+    permission: "BiszPortal.Applications.read.me or BiszPortal.Applications.read.others",
+  },
+  {
+    label: "Resource Servers",
+    path: "/resources",
+    icon: SetUp,
+    enabled: capabilities.value.resourcesRead,
+    permission: "BiszPortal.Resources.read.me or BiszPortal.Resources.read.others",
   },
   {
     label: "Assets",
@@ -138,11 +146,19 @@ const primaryNavigation = computed(() =>
 );
 const bottomColumns = computed(() => primaryNavigation.value.length + 1);
 
+const activeNavigationPath = computed(() => {
+  if (route.path === "/") return "/";
+  const section = `/${route.path.split("/")[1] ?? ""}`;
+  return navigation.value.some((item) => item.path === section)
+    ? section
+    : route.path;
+});
+
 const pageTitle = computed(
   () =>
     navigation.value.find(
       (item) =>
-        route.path === item.path || route.path.startsWith(`${item.path}/`),
+        activeNavigationPath.value === item.path || activeNavigationPath.value.startsWith(`${item.path}/`),
     )?.label ?? "Portal",
 );
 
@@ -190,7 +206,7 @@ async function handleInstall() {
         <span>DevConnect</span>
       </NuxtLink>
 
-      <el-menu class="portal-menu" :default-active="route.path">
+      <el-menu class="portal-menu" :default-active="activeNavigationPath">
         <el-tooltip
           v-for="item in navigation"
           :key="item.path"
@@ -251,7 +267,7 @@ async function handleInstall() {
       </div>
     </el-aside>
 
-    <el-container direction="vertical">
+    <el-container class="portal-body" direction="vertical">
       <el-header class="portal-header">
         <div class="portal-header__title">
           <el-breadcrumb separator="/" class="desktop-only">
@@ -370,7 +386,7 @@ async function handleInstall() {
 
   <AppBottomNav
     :items="primaryNavigation"
-    :active-path="route.path"
+    :active-path="activeNavigationPath"
     :style="{ gridTemplateColumns: `repeat(${bottomColumns}, 1fr)` }"
     @more="moreOpen = true"
   />
@@ -389,14 +405,14 @@ async function handleInstall() {
         :to="item.enabled === false ? undefined : item.path"
         class="more-nav__item"
         :class="{
-          'is-active': route.path === item.path,
+          'is-active': activeNavigationPath === item.path,
           'is-disabled': item.enabled === false,
         }"
         @click="item.enabled === false ? undefined : (moreOpen = false)"
       >
         <el-icon><component :is="item.icon" /></el-icon>
         <span>{{ item.label }}</span>
-        <el-icon v-if="route.path === item.path" class="more-nav__check">
+        <el-icon v-if="activeNavigationPath === item.path" class="more-nav__check">
           <Check />
         </el-icon>
       </NuxtLink>
@@ -471,18 +487,22 @@ async function handleInstall() {
 
 <style scoped>
 .portal-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--surface-page);
 }
 
+.portal-body {
+  height: 100%;
+  min-height: 0;
+}
+
 .portal-aside {
-  position: sticky;
-  top: 0;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
+  min-height: 0;
   background: var(--surface-card);
   border-right: 1px solid var(--border-subtle);
 }
@@ -512,9 +532,11 @@ async function handleInstall() {
 }
 
 .portal-menu {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   padding-top: 10px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-right: 0;
 }
 
@@ -554,6 +576,7 @@ async function handleInstall() {
 
 .portal-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   height: 64px;
@@ -601,8 +624,14 @@ async function handleInstall() {
 
 .portal-main {
   min-width: 0;
+  min-height: 0;
   padding: 28px 32px 48px;
-  overflow-x: clip;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  scroll-padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
 }
 
 .update-banner {
@@ -768,9 +797,6 @@ async function handleInstall() {
   }
 
   .portal-header {
-    position: sticky;
-    top: 0;
-    z-index: 900;
     height: 56px;
     padding: 0 12px;
     gap: 8px;

@@ -318,6 +318,14 @@ export type UserDetail = UserSummary & {
   applications: UserApplicationPermissions[];
 };
 
+export type UserAuthorizationSession = {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  resource: string;
+  current: boolean;
+};
+
 export const applicationRoleSchema = z.enum(["role.ADMIN", "role.GENERAL"]);
 export type ApplicationRole = z.infer<typeof applicationRoleSchema>;
 
@@ -408,11 +416,29 @@ export type ApplicationResourceView = {
   availableScopes: string[];
   grantedScopes: string[];
   claimCount: number;
+  canUpdate: boolean;
+  canDelete: boolean;
 };
 export type AvailableApplicationResource = Omit<
   ApplicationResourceView,
-  "grantedScopes" | "claimCount"
+  "grantedScopes" | "claimCount" | "canUpdate" | "canDelete"
 >;
+export type ResourceSummary = { resourceId: string; name: string };
+export type ResourceDetail = ResourceSummary & {
+  availableScopes: string[];
+  backchannelLogoutUri: string | null;
+  capabilities: { update: boolean; delete: boolean };
+};
+export const resourceScopeChangeSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("add"),
+    scope: z.string().trim().regex(/^[\x21\x23-\x5b\x5d-\x7e]+$/, "Enter one valid OAuth scope"),
+  }),
+  z.object({ action: z.literal("remove"), scope: z.string().min(1) }),
+]);
+export const resourceLogoutUriSchema = z.object({
+  backchannelLogoutUri: z.string().trim().min(1, "Enter a logout webhook URL"),
+});
 export type ApplicationCapabilities = {
   update: boolean;
   delete: boolean;
@@ -432,7 +458,7 @@ export type ApplicationDetail = ApplicationSummary & {
   organizationIds: string[];
   availableOrganizations: ApplicationOrganizationView[];
   updatedAt: string;
-  role: ApplicationRole;
+  role: ApplicationRole | null;
   capabilities: ApplicationCapabilities;
   owners: ApplicationOwnerView[];
   resources: ApplicationResourceView[];

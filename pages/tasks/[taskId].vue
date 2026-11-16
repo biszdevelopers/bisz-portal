@@ -521,6 +521,10 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
 .task-sidebar {
   display: grid;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  max-height: calc(100dvh - 64px - 40px);
+  overflow-y: auto;
 }
 
 .task-side-card {
@@ -580,6 +584,13 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
 @media (max-width: 1023px) {
   .task-layout {
     grid-template-columns: 1fr;
+  }
+
+  .task-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    order: -1;
   }
 }
 </style>

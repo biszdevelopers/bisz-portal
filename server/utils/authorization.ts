@@ -26,6 +26,7 @@ export function portalCapabilities(
 ): PortalCapabilities {
   const set = new DelegatedPermissionSet(grants);
   const has = (permission: Permission) => set.has(permission);
+  const { Applications, Resources } = PortalPermissions.BiszPortal;
   return {
     projectsRead: has(PortalPermissions.BiszPortal.Projects.read),
     projectsCreate: has(PortalPermissions.BiszPortal.Projects.create),
@@ -46,18 +47,17 @@ export function portalCapabilities(
     calendarRead: has(PortalPermissions.BiszPortal.Calendar.read),
     usersRead: has(PortalPermissions.BiszPortal.Users.read),
     usersUpdate: has(PortalPermissions.BiszPortal.Users.update),
-    applicationsRead: has(PortalPermissions.BiszPortal.Applications.read),
-    applicationsCreate: has(PortalPermissions.BiszPortal.Applications.create),
-    applicationsUpdate: has(PortalPermissions.BiszPortal.Applications.update),
-    applicationsDelete: has(PortalPermissions.BiszPortal.Applications.delete),
+    applicationsRead: has(Applications.read.me) || has(Applications.read.others),
+    applicationsReadMe: has(Applications.read.me),
+    applicationsCreate: has(Applications.create),
+    applicationsUpdate: has(Applications.update.me) || has(Applications.update.others),
+    applicationsDelete: has(Applications.delete.me) || has(Applications.delete.others),
+    resourcesRead: has(Resources.read.me) || has(Resources.read.others),
     applicationOwnersManage: has(
       PortalPermissions.BiszPortal.ApplicationOwners.manage,
     ),
     applicationResourcesManage: has(
       PortalPermissions.BiszPortal.ApplicationResources.manage,
-    ),
-    applicationScopesManage: has(
-      PortalPermissions.BiszPortal.ApplicationScopes.manage,
     ),
     applicationPermissionsManage: has(
       PortalPermissions.BiszPortal.ApplicationPermissions.manage,
@@ -83,11 +83,13 @@ export function assetsCapabilities(
 
 export async function requirePortalPermission(
   event: H3Event,
-  permission: Permission,
+  permission: Permission | readonly Permission[],
 ) {
   const auth = await authenticateRequest(event);
   if (auth instanceof APIError) return auth;
-  if (!new DelegatedPermissionSet(auth.claims.permissions).has(permission)) {
+  const permissions = new DelegatedPermissionSet(auth.claims.permissions);
+  const required = typeof permission === "string" ? [permission] : permission;
+  if (!required.some((value) => permissions.has(value))) {
     return new APIError(
       "forbidden",
       "You do not have the required portal permission",

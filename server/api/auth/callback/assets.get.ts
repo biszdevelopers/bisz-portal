@@ -64,6 +64,7 @@ export default defineEventHandler(async (event) => {
       await assetsOidcConfiguration(),
       getRequestURL(event),
       { expectedNonce: nonce, expectedState: state, pkceCodeVerifier: verifier },
+      { redirect_uri: assetsCallbackUrl() },
     );
     requireMatchingAssetsUser(tokens.claims()?.sub, userId);
     await saveAssetsTokens(userId, tokens);

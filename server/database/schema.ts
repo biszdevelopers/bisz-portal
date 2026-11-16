@@ -138,6 +138,17 @@ export const portalAuthTokens = pgTable("portal_auth_tokens", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("portal_auth_tokens_user_id_idx").on(table.userId)]);
 
+export const portalRevokedAccessTokens = pgTable("portal_revoked_access_tokens", {
+  jti: text("jti").primaryKey(),
+  validAfter: timestamp("valid_after", { withTimezone: true }).notNull(),
+  retainUntil: timestamp("retain_until", { withTimezone: true }).notNull(),
+}, (table) => [index("portal_revoked_access_tokens_retention_idx").on(table.retainUntil)]);
+
+export const portalUserLogouts = pgTable("portal_user_logouts", {
+  userId: uuid("user_id").primaryKey(),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+});
+
 export const tags = pgTable(
   "tags",
   {

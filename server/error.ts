@@ -46,6 +46,7 @@ export default defineNitroErrorHandler((input, event) => {
     console.error(
       JSON.stringify({
         level: "error",
+        requestId: event.context.requestId,
         message: "Unhandled API error",
         status,
         error: original?.message ?? "Unknown error",

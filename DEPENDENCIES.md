@@ -118,7 +118,8 @@ Portal tokens are encrypted with AES-256-GCM at rest in
 Base URL: `BASIS_AUTH_INTERNAL_URL`. Headers:
 
 ```text
-Authorization: Bearer <BASIS_AUTH_INTERNAL_TOKEN>
+Authorization: Bearer <BASIS_AUTH_RESOURCE_SECRET>
+x-basis-resource: <URL-encoded BASIS_AUTH_RESOURCE>
 x-basis-actor-token: Bearer <signed-in user's portal access token>
 Cache-Control: no-store
 ```
@@ -215,7 +216,7 @@ Portal side:
 | `BASIS_AUTH_CLIENT_SECRET` | Yes | `client_secret_basic` |
 | `BASIS_AUTH_RESOURCE` | Yes | Portal audience (`devconnect://noesis`) |
 | `BASIS_AUTH_INTERNAL_URL` | Yes | Internal API base |
-| `BASIS_AUTH_INTERNAL_TOKEN` | Yes | Internal API bearer token |
+| `BASIS_AUTH_RESOURCE_SECRET` | Yes | Internal API bearer token |
 | `BASIS_PORTAL_ORIGIN` | Yes | Callback and CSRF origin |
 | `NUXT_APP_SECRET` | Yes | Session sealing and token-encryption key derivation |
 
@@ -227,7 +228,7 @@ Auth side (must match):
 | `MANAGEMENT_PORTAL_CLIENT_ID` | Must equal `BASIS_AUTH_CLIENT_ID` |
 | `MANAGEMENT_PORTAL_AUDIENCE` | Must equal `BASIS_AUTH_RESOURCE` |
 | `MANAGEMENT_PORTAL_SCOPE` | Must equal `noesis.access` |
-| Internal API token | Must equal `BASIS_AUTH_INTERNAL_TOKEN` |
+| Internal API token | Must equal `BASIS_AUTH_RESOURCE_SECRET` |
 | Database | Auth's own PostgreSQL database |
 
 ### 2.7 Registration runbook
@@ -240,7 +241,7 @@ Auth side (must match):
 6. Add the `BiszPortal.*` permission catalog and publish a catalog version.
 7. Affiliate users with the client and grant permissions.
 8. Copy the client ID/secret into the portal environment.
-9. Set `BASIS_AUTH_INTERNAL_TOKEN` to the same value on both services.
+9. Set `BASIS_AUTH_RESOURCE_SECRET` to the same value on both services.
 10. Verify `/api/me` returns capabilities and a page loads.
 
 For Assets, repeat with a second confidential client:
@@ -567,7 +568,7 @@ Push requires HTTPS except `localhost` development.
 |---|---|---|---|
 | `NUXT_APP_SECRET` | Session sealing + token key derivation | Requires re-login | All portal sessions and encrypted tokens |
 | `BASIS_AUTH_CLIENT_SECRET` | Portal OIDC client | Coordinate with Auth | Sign-in/token refresh |
-| `BASIS_AUTH_INTERNAL_TOKEN` | Internal API access | Coordinate with Auth | User/app management |
+| `BASIS_AUTH_RESOURCE_SECRET` | Internal API access | Coordinate with Auth | User/app management |
 | `BASIS_ASSETS_CLIENT_SECRET` | Assets OIDC client | Coordinate with Auth/Assets | Assets sign-in |
 | `BASIS_ASSETS_TOKEN_KEY` | Encrypt stored Assets tokens | Requires reconnecting Assets | All Assets connections |
 | `GITHUB_APP_PRIVATE_KEY` | GitHub App JWT signing | Rotate key in GitHub App | Repository features |
@@ -594,7 +595,7 @@ Steps:
 2. Copy `.env.example` to `.env` and fill required values.
 3. Create the portal database and run `bun run db:setup`.
 4. Register both OIDC clients in the local Auth instance.
-5. Confirm `BASIS_AUTH_INTERNAL_TOKEN` matches on both services.
+5. Confirm `BASIS_AUTH_RESOURCE_SECRET` matches on both services.
 6. Start Assets locally or set both Assets URLs to the dev instance.
 7. `bun run dev` and sign in.
 8. Optional: generate VAPID keys and enable `NUXT_PUBLIC_PUSH_ENABLED`.
@@ -632,3 +633,75 @@ No email/SMS provider, analytics, CDN, Redis/queue, cloud object storage,
 external identity provider beyond Basis Auth, or third-party error tracking.
 Everything else is bundled in the portal or owned by the services above.
 
+## 14. Running the portal on its own server
+
+The portal can run on a host that is separate from Basis Auth and DevConnect
+Assets. The browser always talks to the public portal origin; all service-to-
+service traffic uses the URLs below.
+
+### 14.1 Portal environment contract
+
+| Variable | Public/private | Notes |
+|---|---|---|
+| `BASIS_PORTAL_ORIGIN` | Public | Exact HTTPS origin users visit. No path, query, or fragment. Used for OIDC redirects, CSRF, HSTS, backchannel URL, and secure cookies. |
+| `BASIS_AUTH_ISSUER` | Public | Must match the `iss` claim in Auth tokens. Also used for avatar URLs. |
+| `BASIS_AUTH_INTERNAL_URL` | Private | Auth internal listener; not necessarily the public issuer. |
+| `BASIS_AUTH_RESOURCE_SECRET` | Private | Shared with Auth; sent as `Authorization: Bearer` plus `x-basis-resource`. |
+| `BISZ_ASSETS_API_URL` | Private | Server-side Assets base URL. |
+| `NUXT_PUBLIC_BISZ_ASSETS_API_URL` | Public | Browser-reachable Assets base URL. Must allow the portal origin via CORS. |
+| `DATABASE_URL` | Private | Portal-only PostgreSQL. Never the Auth database. |
+| `NUXT_APP_SECRET` | Private | At least 32 characters. Identical on every portal instance. |
+
+### 14.2 Required reverse proxy behavior
+
+- Terminate TLS and forward `Host` unchanged.
+- Set `X-Forwarded-Proto: https` and `X-Forwarded-For`.
+- Do not cache SSR HTML: CSP nonces are generated per request.
+- Cache only `/_nuxt/**`, `/icons/**`, and the font files.
+- Keep `/sw.js` revalidated (`no-cache`).
+- Do not expose the Nitro process directly; otherwise clients can spoof
+  `X-Forwarded-For` and the rate limiter key.
+
+### 14.3 Network paths that must exist
+
+| Source | Destination | Purpose |
+|---|---|---|
+| Browser | Portal public origin | Pages, API, service worker, push subscription |
+| Browser | Auth public issuer | OIDC redirects, avatar images |
+| Browser | Assets public URL | Direct asset list, upload, preview |
+| Portal host | Auth public issuer | Discovery, token, JWKS, revoke |
+| Portal host | Auth internal URL | Users, applications, backchannel proof |
+| Portal host | Assets private URL | Project creation and repair |
+| Portal host | PostgreSQL | All portal data |
+| Portal host | GitHub 443 + DNS 53 | Repository metadata |
+| Portal host | Push services 443 | Web Push delivery |
+| Auth host | `${BASIS_PORTAL_ORIGIN}/api/auth/backchannel-logout` | Backchannel logout and revoke webhooks |
+
+### 14.4 Registration checklist outside this repository
+
+1. Basis Auth: add `${BASIS_PORTAL_ORIGIN}/api/auth/callback/basis-auth` and
+   `${BASIS_PORTAL_ORIGIN}/api/auth/callback/assets` as allowed redirect URIs.
+2. Basis Auth: register the backchannel URL above for `BASIS_AUTH_RESOURCE`.
+3. Basis Auth: set `MANAGEMENT_PORTAL_CLIENT_ID`, `MANAGEMENT_PORTAL_AUDIENCE`,
+   and `MANAGEMENT_PORTAL_SCOPE` to match the portal client.
+4. Basis Auth: share `BASIS_AUTH_RESOURCE_SECRET` with the portal.
+5. Assets: allow the portal origin, `Authorization`, `Content-Type`,
+   `X-Upload-Session-Token`, and expose `Content-Type`,
+   `Content-Disposition`, `Content-Length`, `ETag`, `Cache-Control`,
+   `Accept-Ranges`, and `Content-Range`. Support `Range` for media.
+6. DNS/TLS: make the portal origin valid for the public certificate and keep
+   the Auth internal certificate trusted by the portal host
+   (`NODE_EXTRA_CA_CERTS` if it is a private CA).
+7. Portal DB: run `bun run db:migrate` before starting the new build and keep
+   the database reachable only from portal hosts.
+
+### 14.5 Multi-instance notes
+
+- Sealed session cookies need no sticky sessions, but every instance must use
+  the same `NUXT_APP_SECRET` and database.
+- Rate limits are process-local; they are not global across instances.
+- Due-notification sweeps and the push queue use PostgreSQL advisory locks, so
+  duplicate instances are safe.
+- Maintenance cleanup is idempotent but runs per instance.
+- Rotating `NUXT_VAPID_PRIVATE_KEY` or `NUXT_PUSH_TOKEN_KEY` invalidates all
+  browser push subscriptions.

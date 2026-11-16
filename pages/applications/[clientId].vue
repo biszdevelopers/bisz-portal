@@ -644,6 +644,7 @@ onMounted(() => void refreshGenerator());
                   ><el-button
                     :disabled="
                       !application.capabilities.manageResources ||
+                      !row.canUpdate ||
                       row.claimCount > 1
                     "
                     text
@@ -662,7 +663,7 @@ onMounted(() => void refreshGenerator());
                           >Detach</el-dropdown-item
                         ><el-dropdown-item
                           command="delete"
-                          :disabled="row.claimCount > 1"
+                          :disabled="!row.canDelete || row.claimCount > 1"
                           >Delete definition</el-dropdown-item
                         ></el-dropdown-menu
                       ></template
@@ -704,7 +705,7 @@ onMounted(() => void refreshGenerator());
               <span>Allowed scopes by resource</span
               ><el-tooltip
                 :disabled="application.capabilities.manageScopes"
-                content="BiszPortal.ApplicationScopes.manage and application membership are required"
+                content="BiszPortal.ApplicationResources.manage and application membership are required"
                 ><span
                   ><el-button
                     type="primary"
