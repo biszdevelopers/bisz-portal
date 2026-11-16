@@ -9,7 +9,11 @@ import {
   tasks,
 } from "~/server/database/schema";
 import type { AuthenticatedRequest } from "~/server/utils/api-auth";
-import { projectCapabilities } from "~/server/utils/authorization";
+import {
+  canCommentOnTask,
+  findMembership,
+  projectCapabilities,
+} from "~/server/utils/authorization";
 import { findBasisUsers } from "~/server/utils/basis-users";
 import { decodeCursor, encodeCursor } from "~/server/utils/cursor";
 import type {
@@ -24,31 +28,18 @@ export type CommentTarget = {
   projectId: string;
   projectName: string;
   projectStatus: "active" | "archived";
-  taskId: string | null;
-  incidentId: string | null;
   title: string;
   path: string;
-};
+} & (
+  | { taskId: string; taskCreatorId: string; incidentId: null }
+  | { taskId: null; incidentId: string | null }
+);
 
 export type CommentAccess = CommentTarget & {
   canRead: boolean;
   canWrite: boolean;
   canModerate: boolean;
 };
-
-async function membershipFor(projectId: string, userId: string) {
-  const [member] = await useDatabase()
-    .select()
-    .from(projectMembers)
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        eq(projectMembers.userId, userId),
-      ),
-    )
-    .limit(1);
-  return member;
-}
 
 export async function resolveCommentTarget(input: {
   projectId?: string;
@@ -89,6 +80,7 @@ export async function resolveCommentTarget(input: {
       projectName: row.project.name,
       projectStatus: row.project.status,
       taskId: row.task.id,
+      taskCreatorId: row.task.creatorId,
       incidentId: null,
       title: row.task.title,
       path: `/tasks/${row.task.id}`,
@@ -116,7 +108,7 @@ export async function commentAccess(
   auth: AuthenticatedRequest,
   target: CommentTarget,
 ): Promise<CommentAccess> {
-  const membership = await membershipFor(target.projectId, auth.user.id);
+  const membership = await findMembership(target.projectId, auth.user.id);
   if (!membership) {
     return {
       ...target,
@@ -131,14 +123,13 @@ export async function commentAccess(
     : target.incidentId
       ? capabilities.readIncidents
       : capabilities.read;
-  const canWrite =
-    target.projectStatus !== "active"
-      ? false
-      : target.taskId
-        ? capabilities.updateTasks
-        : target.incidentId
-          ? capabilities.writeIncidents
-          : capabilities.read;
+  const canWrite = target.taskId !== null
+    ? await canCommentOnTask(auth, capabilities, target.projectStatus, {
+        id: target.taskId,
+        creatorId: target.taskCreatorId,
+      })
+    : target.projectStatus === "active" &&
+      (target.incidentId ? capabilities.writeIncidents : capabilities.comment);
   const canModerate = capabilities.manageMembers;
   return { ...target, canRead, canWrite, canModerate };
 }

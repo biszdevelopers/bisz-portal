@@ -4,7 +4,12 @@ import {
 } from "@basis/schema/permissions";
 import type { H3Event } from "h3";
 import { and, eq } from "drizzle-orm";
-import { projectMembers, projects, tasks } from "~/server/database/schema";
+import {
+  projectMembers,
+  projects,
+  taskMembers,
+  tasks,
+} from "~/server/database/schema";
 import { useDatabase } from "~/server/database/client";
 import {
   authenticateRequest,
@@ -24,7 +29,10 @@ import {
 export function portalCapabilities(
   grants: readonly string[],
 ): PortalCapabilities {
-  const set = new DelegatedPermissionSet(grants);
+  return capabilitiesFor(new DelegatedPermissionSet(grants));
+}
+
+function capabilitiesFor(set: DelegatedPermissionSet): PortalCapabilities {
   const has = (permission: Permission) => set.has(permission);
   const { Applications, Resources } = PortalPermissions.BiszPortal;
   return {
@@ -104,13 +112,18 @@ export function projectCapabilities(
   auth: AuthenticatedRequest,
   membership: { role: "owner" | "member"; permissions: ProjectPermission[] },
 ): ProjectCapabilities {
-  const global = portalCapabilities(auth.claims.permissions);
+  const grants = new DelegatedPermissionSet(auth.claims.permissions);
+  const global = capabilitiesFor(grants);
   const local = (permission: ProjectPermission) =>
     membership.role === "owner" || membership.permissions.includes(permission);
+  const read = global.projectsRead && local(ProjectPermissions.projectRead);
+  const commentScope = membership.role === "owner" ? "me" : "others";
   return {
-    read: global.projectsRead && local(ProjectPermissions.projectRead),
+    read,
     update: global.projectsUpdate && local(ProjectPermissions.projectUpdate),
     archive: global.projectsArchive && local(ProjectPermissions.projectArchive),
+    comment:
+      read && grants.has(PortalPermissions.BiszPortal.Projects.comment[commentScope]),
     manageMembers:
       global.projectMembersManage && local(ProjectPermissions.membersManage),
     readTasks: global.tasksRead && local(ProjectPermissions.tasksRead),
@@ -125,6 +138,32 @@ export function projectCapabilities(
       global.incidentsUpdate &&
       local(ProjectPermissions.incidentsWrite),
   };
+}
+
+export async function canCommentOnTask(
+  auth: AuthenticatedRequest,
+  capabilities: ProjectCapabilities,
+  projectStatus: "active" | "archived",
+  task: { id: string; creatorId: string },
+) {
+  if (projectStatus !== "active" || !capabilities.read || !capabilities.readTasks)
+    return false;
+
+  const grants = new DelegatedPermissionSet(auth.claims.permissions);
+  const { me, others } = PortalPermissions.BiszPortal.Tasks.comment;
+  const canCommentOnOwn = grants.has(me);
+  const canCommentOnOthers = grants.has(others);
+  if (canCommentOnOwn === canCommentOnOthers) return canCommentOnOwn;
+  if (task.creatorId === auth.user.id) return canCommentOnOwn;
+
+  const [assignment] = await useDatabase()
+    .select({ userId: taskMembers.userId })
+    .from(taskMembers)
+    .where(
+      and(eq(taskMembers.taskId, task.id), eq(taskMembers.userId, auth.user.id)),
+    )
+    .limit(1);
+  return assignment ? canCommentOnOwn : canCommentOnOthers;
 }
 
 export async function findMembership(projectId: string, userId: string) {

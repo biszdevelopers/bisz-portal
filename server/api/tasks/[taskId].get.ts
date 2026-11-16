@@ -2,6 +2,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { apiResult } from "~/server/utils/api-response";
 import {
+  canCommentOnTask,
   requirePortalPermission,
   requireProjectCapability,
 } from "~/server/utils/authorization";
@@ -96,7 +97,7 @@ export default defineEventHandler(async (event) => {
       row.projectStatus === "active" &&
       access.capabilities.createTasks &&
       !otherReview,
-    comment: row.projectStatus === "active" && access.capabilities.updateTasks,
+    comment: await canCommentOnTask(auth, access.capabilities, row.projectStatus, row.task),
   };
   return apiResult(
     event,

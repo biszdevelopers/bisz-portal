@@ -6,9 +6,20 @@ import {
 
 export const PortalPermissions = definePermissionTree({
   BiszPortal: {
-    Projects: { read: true, create: true, update: true, archive: true },
+    Projects: {
+      read: true,
+      create: true,
+      update: true,
+      archive: true,
+      comment: { me: true, others: true },
+    },
     ProjectMembers: { manage: true },
-    Tasks: { read: true, create: true, update: true },
+    Tasks: {
+      read: true,
+      create: true,
+      update: true,
+      comment: { me: true, others: true },
+    },
     Tags: { read: true, create: true, delete: true },
     Incidents: { read: true, create: true, update: true },
     Calendar: { read: true },
@@ -106,6 +117,7 @@ export type ProjectCapabilities = {
   read: boolean;
   update: boolean;
   archive: boolean;
+  comment: boolean;
   manageMembers: boolean;
   readTasks: boolean;
   createTasks: boolean;

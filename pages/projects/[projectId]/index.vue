@@ -621,7 +621,7 @@ useHead(() => ({
             <section class="surface project-comments">
               <CommentThread
                 :project-id="project.id"
-                :can-write="project.capabilities.read && project.status === 'active'"
+                :can-write="project.capabilities.comment && project.status === 'active'"
                 title="Project discussion"
                 @changed="activityFeed?.refresh()"
               />

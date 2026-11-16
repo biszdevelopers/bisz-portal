@@ -299,8 +299,7 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
             >
               {{ taskStatusLabel(task.status) }}
             </el-tag>
-            <span class="muted">{{ task.projectName }}</span>
-            <span class="muted">{{ formatTaskDueDate(task.dueDate) }}</span>
+            <NuxtLink :to="`/projects/${encodeURIComponent(task.projectId)}`">{{ task.projectName }}</NuxtLink>
           </div>
           <div v-if="task.tags.length" class="task-tags" aria-label="Task tags">
             <el-tag v-for="tag in task.tags" :key="tag.name" effect="plain" size="small">
@@ -425,11 +424,9 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
           <section class="surface task-side-card">
             <h2>Details</h2>
             <dl>
-              <div><dt>Project</dt><dd><NuxtLink :to="`/projects/${encodeURIComponent(task.projectId)}`">{{ task.projectName }}</NuxtLink></dd></div>
-              <div><dt>Status</dt><dd>{{ taskStatusLabel(task.status) }}</dd></div>
-              <div><dt>Due</dt><dd>{{ task.dueDate ? formatDate(task.dueDate) : "No due date" }}</dd></div>
               <div><dt>Created</dt><dd>{{ formatDateTime(task.createdAt) }}</dd></div>
               <div><dt>Updated</dt><dd>{{ formatDateTime(task.updatedAt) }}</dd></div>
+              <div><dt>Due</dt><dd>{{ task.dueDate ? formatDate(task.dueDate) : "No due date" }}</dd></div>
             </dl>
           </section>
         </aside>
@@ -465,6 +462,10 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
   gap: 8px;
   margin-top: 6px;
   font-size: 12px;
+}
+
+.task-meta a {
+  color: var(--accent);
 }
 
 .task-tags {
@@ -562,11 +563,6 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
   margin: 0;
   font-size: 12px;
   text-align: right;
-}
-
-.task-side-card dd a {
-  color: var(--accent);
-  text-decoration: none;
 }
 
 .task-member-add {

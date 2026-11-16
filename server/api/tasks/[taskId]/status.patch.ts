@@ -2,7 +2,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { apiResult } from "~/server/utils/api-response";
 import { authenticateRequest } from "~/server/utils/api-auth";
-import { requireProjectCapability } from "~/server/utils/authorization";
+import { canCommentOnTask, requireProjectCapability } from "~/server/utils/authorization";
 import { requireSameOrigin } from "~/server/utils/basis-applications";
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import { useDatabase } from "~/server/database/client";
@@ -292,8 +292,7 @@ export default defineEventHandler(async (event) => {
       access.capabilities.updateTasks,
     duplicate:
       result.projectStatus === "active" && access.capabilities.createTasks,
-    comment:
-      result.projectStatus === "active" && access.capabilities.updateTasks,
+    comment: await canCommentOnTask(auth, access.capabilities, result.projectStatus, task),
   };
   return apiResult(event, new APIResponse({ task, actions }));
 });

@@ -177,8 +177,10 @@ The portal application in Basis Auth must contain every permission string from
 
 ```text
 BiszPortal.Projects.read|create|update|archive
+BiszPortal.Projects.comment.me|others
 BiszPortal.ProjectMembers.manage
 BiszPortal.Tasks.read|create|update
+BiszPortal.Tasks.comment.me|others
 BiszPortal.Tags.read|create|delete
 BiszPortal.Incidents.read|create|update
 BiszPortal.Calendar.read
@@ -196,8 +198,10 @@ Rules:
 
 - Permission grammar: dot-separated, group segments upper camel case, a
   lower-camel behavior segment last (`@basis/schema/permissions`).
-- The portal does not introduce new permission strings. New features reuse
-  existing permissions (for example task deletion uses `Tasks.update`).
+- Project owners use `Projects.comment.me`. Other project members use
+  `Projects.comment.others`. Task creators and assignees use `Tasks.comment.me`.
+  Other members of the task's project use `Tasks.comment.others`. Commenting
+  also requires read access to the target and an active project.
 - A permission catalog change requires coordinating with the Auth repo: add
   the definition, bump the application catalog version, and re-grant users.
   Users receive the new catalog version; stale versions return `409

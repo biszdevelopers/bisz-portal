@@ -92,6 +92,8 @@ function linkFor(event: ActivityView) {
     if (event.taskId) return `/tasks/${event.taskId}#comment-${event.commentId}`;
     if (event.incidentId)
       return `/incidents/${event.incidentId}#comment-${event.commentId}`;
+    if (event.projectId)
+      return `/projects/${event.projectId}#comment-${event.commentId}`;
   }
   if (event.taskId) return `/tasks/${event.taskId}`;
   if (event.incidentId) return `/incidents/${event.incidentId}`;
@@ -144,6 +146,7 @@ defineExpose({ refresh: () => load(true) });
           <component
             :is="linkFor(event) ? NuxtLink : 'span'"
             :to="linkFor(event) ?? undefined"
+            class="activity-feed__label"
           >
             {{ label(event) }}
           </component>
@@ -193,10 +196,13 @@ defineExpose({ refresh: () => load(true) });
   min-width: 0;
 }
 
-.activity-feed__item a {
-  color: var(--text-primary);
+.activity-feed__label {
   font-size: 13px;
   line-height: 1.45;
+}
+
+.activity-feed__item a {
+  color: var(--text-primary);
   text-decoration: none;
 }
 
