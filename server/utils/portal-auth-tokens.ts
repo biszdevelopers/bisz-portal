@@ -13,6 +13,16 @@ import { portalTokenStatus } from "~/server/utils/portal-logout";
 type TokenPair = { access_token: string; refresh_token?: string };
 const refreshWindowMs = 60_000;
 
+type PortalSession = Awaited<ReturnType<typeof getUserSession>>;
+
+export async function portalSession(event: H3Event): Promise<PortalSession> {
+  const cached = event.context.portalSession as PortalSession | undefined;
+  if (cached) return cached;
+  const session = await getUserSession(event);
+  event.context.portalSession = session;
+  return session;
+}
+
 export function invalidPortalAccessToken() {
   return new APIError("invalid_session", "Invalid access token", 401, "invalid_session");
 }
@@ -88,7 +98,7 @@ export async function deletePortalTokens(sessionId: string) {
 }
 
 export async function revokePortalSession(event: H3Event) {
-  const session = await getUserSession(event);
+  const session = await portalSession(event);
   const sessionId = session.secure?.basisSessionId;
   const userId = session.user?.id;
   if (sessionId && typeof userId === "string") {
@@ -140,7 +150,7 @@ function isInvalidGrant(error: unknown) {
 }
 
 export async function portalAccessToken(event: H3Event): Promise<string | APIError> {
-  const session = await getUserSession(event);
+  const session = await portalSession(event);
   const userId = session.user?.id;
   if (typeof userId !== "string")
     return invalidPortalAccessToken();

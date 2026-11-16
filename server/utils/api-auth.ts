@@ -8,6 +8,7 @@ import {
   decodePortalAccessClaims,
   invalidPortalAccessToken,
   portalAccessToken,
+  portalSession,
 } from "~/server/utils/portal-auth-tokens";
 
 export type AuthenticatedRequest = {
@@ -31,7 +32,7 @@ export async function authenticateRequest(
   try {
     const accessToken = await portalAccessToken(event);
     if (accessToken instanceof APIError) return accessToken;
-    const session = await getUserSession(event);
+    const session = await portalSession(event);
     const userId = session.user?.id;
     if (typeof userId !== "string")
       return invalidPortalAccessToken();
