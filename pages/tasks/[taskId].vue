@@ -589,7 +589,7 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
   }
 
   .task-member-add {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
