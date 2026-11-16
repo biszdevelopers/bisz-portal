@@ -16,9 +16,10 @@ export type BasisUserView = {
   image: string | null;
 };
 
-const POSITIVE_TTL_MS = 60_000;
+const POSITIVE_TTL_MS = 5 * 60_000;
 const NEGATIVE_TTL_MS = 30_000;
-const MAX_ENTRIES = 500;
+const MAX_ENTRIES = 2_000;
+const MAX_PARALLEL_LOOKUPS = 6;
 
 type CacheEntry = {
   value: BasisUserView | null;
@@ -94,16 +95,27 @@ export async function findBasisUser(
 
 export async function findBasisUsers(userIds: string[]) {
   const unique = [...new Set(userIds)];
-  const entries = await Promise.all(
-    unique.map(async (userId) => {
-      try {
-        return [userId, await findBasisUser(userId)] as const;
-      } catch {
-        return [userId, null] as const;
+  const entries = new Map<string, BasisUserView | null>();
+  const queue = [...unique];
+
+  // Auth has no batch endpoint yet. Cap parallel lookups so a large task page
+  // does not open hundreds of internal requests at once.
+  const workers = Array.from(
+    { length: Math.min(MAX_PARALLEL_LOOKUPS, queue.length) },
+    async () => {
+      while (queue.length) {
+        const userId = queue.shift();
+        if (!userId) break;
+        try {
+          entries.set(userId, await findBasisUser(userId));
+        } catch {
+          entries.set(userId, null);
+        }
       }
-    }),
+    },
   );
-  return new Map(entries);
+  await Promise.all(workers);
+  return entries;
 }
 
 export function clearBasisUserCache() {

@@ -61,6 +61,11 @@ export async function validatePortalAccessToken(
   return claims;
 }
 
+/** Decodes a token already loaded from encrypted storage and checked against revocation. */
+export function decodePortalAccessClaims(token: string, userId: string) {
+  return expectedClaims(decodeJwt(token), userId);
+}
+
 export async function savePortalTokens(sessionId: string, userId: string, tokens: TokenPair) {
   if (!tokens.refresh_token) throw new Error("DevConnect did not rotate the refresh token");
   const claims = await validatePortalAccessToken(tokens.access_token, userId);
