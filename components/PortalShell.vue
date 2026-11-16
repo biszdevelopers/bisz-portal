@@ -199,6 +199,7 @@ async function handleInstall() {
 
 <template>
   <a class="skip-link" href="#main-content">Skip to content</a>
+  <p class="sr-only" aria-live="polite">{{ pageTitle }}</p>
   <el-container class="portal-shell">
     <el-aside class="portal-aside" width="240px">
       <NuxtLink class="portal-brand" to="/" aria-label="DevConnect overview">
@@ -467,7 +468,7 @@ async function handleInstall() {
     </div>
   </el-drawer>
 
-  <CommandPalette />
+  <LazyCommandPalette />
 
   <el-dialog v-model="helpVisible" title="Keyboard shortcuts" width="min(520px, 94vw)">
     <dl class="shortcut-list">
