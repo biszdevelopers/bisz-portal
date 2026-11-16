@@ -142,7 +142,6 @@ function summaryBase(
     taskCount: stats?.total ?? 0,
     completedTaskCount: stats?.completed ?? 0,
     reviewTaskId: stats?.reviewTaskId ?? null,
-    reviewLocked: Boolean(stats?.reviewTaskId),
     members,
   };
 }

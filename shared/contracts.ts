@@ -195,7 +195,6 @@ export type ProjectSummary = {
   taskCount: number;
   completedTaskCount: number;
   reviewTaskId: string | null;
-  reviewLocked: boolean;
   members: ProjectMemberView[];
   capabilities: ProjectCapabilities;
 };

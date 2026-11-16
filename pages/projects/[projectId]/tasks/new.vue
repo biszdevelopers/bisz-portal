@@ -54,8 +54,7 @@ const rules: FormRules<typeof form> = {
 const canCreate = computed(
   () =>
     Boolean(project.value?.capabilities.createTasks) &&
-    project.value?.status === "active" &&
-    !project.value?.reviewLocked,
+    project.value?.status === "active",
 );
 
 function disablePastDueDates(value: Date) {

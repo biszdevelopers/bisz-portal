@@ -12,7 +12,7 @@ import { requireSameOrigin } from "~/server/utils/basis-applications";
 import { useDatabase } from "~/server/database/client";
 import { projects, tags, taskTags, tasks } from "~/server/database/schema";
 import { recordActivity } from "~/server/services/activity";
-import { taskViewsFromRows } from "~/server/services/tasks";
+import { lockEditableTask, taskViewsFromRows } from "~/server/services/tasks";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -61,45 +61,46 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDatabase();
-  const [updated] = await db
-    .update(tasks)
-    .set({
-      ...(body.title !== undefined ? { title: body.title } : {}),
-      ...(body.description !== undefined
-        ? { description: body.description }
-        : {}),
-      ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(tasks.id, taskId))
-    .returning();
-  if (!updated)
-    return apiResult(
-      event,
-      new APIError("not_found", "Task not found", 404, "not_found"),
-    );
+  const updated = await db.transaction(async (transaction) => {
+    const task = await lockEditableTask(transaction, taskId);
+    if (task instanceof APIError) return task;
 
-  if (body.tags) {
-    await db.transaction(async (transaction) => {
+    const [updated] = await transaction
+      .update(tasks)
+      .set({
+        ...(body.title !== undefined ? { title: body.title } : {}),
+        ...(body.description !== undefined
+          ? { description: body.description }
+          : {}),
+        ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, taskId))
+      .returning();
+    if (!updated) throw new Error("Task update failed");
+
+    if (body.tags) {
       await transaction.delete(taskTags).where(eq(taskTags.taskId, taskId));
-      if (body.tags?.length) {
+      if (body.tags.length) {
         await transaction
           .insert(taskTags)
           .values(body.tags.map((tagName) => ({ taskId, tagName })));
       }
-    });
-  }
+    }
 
-  await recordActivity(db, {
-    projectId: existing.projectId,
-    actorId: auth.user.id,
-    type: "task_updated",
-    taskId,
-    metadata: {
-      title: updated.title,
-      fields: Object.keys(body),
-    },
+    await recordActivity(transaction, {
+      projectId: task.projectId,
+      actorId: auth.user.id,
+      type: "task_updated",
+      taskId,
+      metadata: {
+        title: updated.title,
+        fields: Object.keys(body),
+      },
+    });
+    return updated;
   });
+  if (updated instanceof APIError) return apiResult(event, updated);
 
   const [project] = await db
     .select({ name: projects.name })

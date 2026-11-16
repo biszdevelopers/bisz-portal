@@ -10,6 +10,7 @@ import { requireSameOrigin } from "~/server/utils/basis-applications";
 import { useDatabase } from "~/server/database/client";
 import { tasks } from "~/server/database/schema";
 import { recordActivity } from "~/server/services/activity";
+import { lockEditableTask } from "~/server/services/tasks";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -36,24 +37,18 @@ export default defineEventHandler(async (event) => {
     "updateTasks",
   );
   if (access instanceof APIError) return apiResult(event, access);
-  if (existing.status === "in_review")
-    return apiResult(
-      event,
-      new APIError(
-        "task_in_review",
-        "Return the task to do before deleting it",
-        409,
-        "task_in_review",
-      ),
-    );
+  const result = await useDatabase().transaction(async (transaction) => {
+    const task = await lockEditableTask(transaction, taskId);
+    if (task instanceof APIError) return task;
 
-  const db = useDatabase();
-  await recordActivity(db, {
-    projectId: existing.projectId,
-    actorId: auth.user.id,
-    type: "task_deleted",
-    metadata: { title: existing.title, taskId: existing.id },
+    await transaction.delete(tasks).where(eq(tasks.id, taskId));
+    await recordActivity(transaction, {
+      projectId: task.projectId,
+      actorId: auth.user.id,
+      type: "task_deleted",
+      metadata: { title: task.title, taskId: task.id },
+    });
   });
-  await db.delete(tasks).where(eq(tasks.id, taskId));
+  if (result instanceof APIError) return apiResult(event, result);
   return apiResult(event, new APIResponse({ deleted: true }));
 });

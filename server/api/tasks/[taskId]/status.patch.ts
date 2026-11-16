@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { apiResult } from "~/server/utils/api-response";
 import { authenticateRequest } from "~/server/utils/api-auth";
@@ -102,17 +102,26 @@ export default defineEventHandler(async (event) => {
     auth,
     existing.projectId,
     submitting ? "read" : "updateTasks",
-    { allowReviewLocked: reviewing },
   );
   if (access instanceof APIError) return apiResult(event, access);
 
   const result = await useDatabase().transaction(async (transaction) => {
+    const [task] = await transaction
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1)
+      .for("no key update");
+    if (!task || task.projectId !== existing.projectId) {
+      return new APIError("not_found", "Task not found", 404, "not_found");
+    }
+
     const [project] = await transaction
       .select({ id: projects.id, name: projects.name, status: projects.status })
       .from(projects)
       .where(eq(projects.id, existing.projectId))
       .limit(1)
-      .for("update");
+      .for("no key update");
     if (!project) {
       return new APIError("not_found", "Task not found", 404, "not_found");
     }
@@ -123,16 +132,6 @@ export default defineEventHandler(async (event) => {
         409,
         "project_archived",
       );
-    }
-
-    const [task] = await transaction
-      .select()
-      .from(tasks)
-      .where(eq(tasks.id, taskId))
-      .limit(1)
-      .for("update");
-    if (!task || task.projectId !== project.id) {
-      return new APIError("not_found", "Task not found", 404, "not_found");
     }
 
     if (submitting && task.creatorId !== auth.user.id) {
@@ -167,28 +166,6 @@ export default defineEventHandler(async (event) => {
         409,
         "invalid_task_transition",
       );
-    }
-
-    if (body.status === "in_review") {
-      const [otherReview] = await transaction
-        .select({ id: tasks.id })
-        .from(tasks)
-        .where(
-          and(
-            eq(tasks.projectId, project.id),
-            eq(tasks.status, "in_review"),
-            ne(tasks.id, task.id),
-          ),
-        )
-        .limit(1);
-      if (otherReview) {
-        return new APIError(
-          "project_in_review",
-          "Another task is already locking this project for review",
-          409,
-          "project_in_review",
-        );
-      }
     }
 
     const now = new Date();

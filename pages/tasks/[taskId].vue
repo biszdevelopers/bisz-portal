@@ -85,18 +85,18 @@ async function changeStatus(status: TaskStatus) {
       ? {
           title: "Submit task for review?",
           message:
-            "Project editing will be locked until a reviewer returns or completes this task.",
+            "Task editing will be locked until a reviewer returns or completes this task.",
           confirm: "Submit for review",
         }
       : status === "todo"
         ? {
             title: "Return task to do?",
-            message: "Project editing will be unlocked so work can continue.",
+            message: "The task will be editable again.",
             confirm: "Return to do",
           }
         : {
             title: "Complete task?",
-            message: "The task will be completed and project editing will be unlocked.",
+            message: "The task will be marked complete and become editable again.",
             confirm: "Complete",
           };
   const confirmed = await ElMessageBox.confirm(copy.message, copy.title, {
@@ -113,6 +113,7 @@ async function changeStatus(status: TaskStatus) {
       `/api/tasks/${encodeURIComponent(task.value.id)}/status`,
       { method: "PATCH", body: { status } },
     );
+    if (status === "in_review") editing.value = false;
     requestError.value = null;
     activityFeed.value?.refresh();
     ElMessage.success(`Task is now ${taskStatusLabel(status)}`);
@@ -347,7 +348,7 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
 
       <div class="task-layout">
         <div class="task-main">
-          <el-card v-if="editing" shadow="never" class="task-editor">
+          <el-card v-if="editing && actions?.edit" shadow="never" class="task-editor">
             <el-form label-position="top" @submit.prevent="saveTask">
               <el-form-item label="Title">
                 <el-input v-model="form.title" maxlength="120" show-word-limit />

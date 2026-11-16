@@ -80,31 +80,24 @@ let repositoryValidationRequest: AbortController | undefined;
 const canEditProjectSettings = computed(
   () =>
     Boolean(project.value?.capabilities.update) &&
-    project.value?.status === "active" &&
-    !project.value?.reviewLocked,
+    project.value?.status === "active",
 );
 const canCreateTask = computed(
   () =>
     Boolean(project.value?.capabilities.createTasks) &&
-    project.value?.status === "active" &&
-    !project.value?.reviewLocked,
+    project.value?.status === "active",
 );
 const canManageMembers = computed(
   () =>
     Boolean(project.value?.capabilities.manageMembers) &&
-    project.value?.status === "active" &&
-    !project.value?.reviewLocked,
+    project.value?.status === "active",
 );
 const canCreateIncident = computed(
   () =>
     capabilities.value.incidentsCreate &&
     Boolean(project.value?.capabilities.writeIncidents),
 );
-const canArchive = computed(
-  () =>
-    Boolean(project.value?.capabilities.archive) &&
-    !project.value?.reviewLocked,
-);
+const canArchive = computed(() => Boolean(project.value?.capabilities.archive));
 const assetsLink = computed<ProjectAssetsLinkView>(() => {
   if (assetsLinkData.value?.assets) return assetsLinkData.value.assets;
   return {
@@ -550,7 +543,7 @@ useHead(() => ({
             <el-tag :type="project.status === 'archived' ? 'info' : 'success'">
               {{ project.status }}
             </el-tag>
-            <el-tag v-if="project.reviewLocked" type="warning">In review</el-tag>
+            <el-tag v-if="project.reviewTaskId" type="warning">Tasks in review</el-tag>
           </div>
         </template>
         <template v-if="project.githubRepository" #actions>
@@ -559,22 +552,6 @@ useHead(() => ({
           </el-button>
         </template>
       </PageHeader>
-
-      <el-alert
-        v-if="project.reviewLocked"
-        class="review-lock-alert"
-        title="Project locked for task review"
-        description="Project changes are paused until a reviewer returns or completes the task in review."
-        type="warning"
-        :closable="false"
-        show-icon
-      >
-        <template #default>
-          <el-link v-if="project.reviewTaskId" :href="`/tasks/${encodeURIComponent(project.reviewTaskId)}`">
-            Open task in review
-          </el-link>
-        </template>
-      </el-alert>
 
       <el-tabs v-model="activeTab" class="project-tabs">
         <el-tab-pane label="Overview" name="overview">
@@ -690,7 +667,6 @@ useHead(() => ({
                 :show-project-filter="false"
                 :show-project-column="false"
                 empty-text="This project has no assets yet"
-                :readonly="project.reviewLocked"
               />
             </div>
           </div>
@@ -851,10 +827,6 @@ useHead(() => ({
   gap: 8px;
   margin-top: 6px;
   font-size: 12px;
-}
-
-.review-lock-alert {
-  margin-bottom: 8px;
 }
 
 .project-tabs {

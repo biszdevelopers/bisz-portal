@@ -9,11 +9,29 @@ import {
 } from "~/server/database/schema";
 import type { AuthenticatedRequest } from "~/server/utils/api-auth";
 import { projectCapabilities } from "~/server/utils/authorization";
+import { APIError } from "~/server/utils/basis-schema";
+import type { DatabaseWriter } from "~/server/services/activity";
 import { decodeCursor, encodeCursor } from "~/server/utils/cursor";
 import { addDays, localDateOnly, searchPattern } from "~/server/utils/text-search";
 import { taskTagViewsByTaskId } from "~/server/services/task-tags";
 import { taskMemberViewsByTaskId } from "~/server/services/task-members";
 import type { TaskView } from "~/shared/contracts";
+
+export async function lockEditableTask(transaction: DatabaseWriter, taskId: string) {
+  const [task] = await transaction
+    .select()
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1)
+    .for("no key update");
+  if (!task) {
+    return new APIError("not_found", "Task not found", 404, "not_found");
+  }
+  if (task.status === "in_review") {
+    return new APIError("task_in_review", "This task is locked for review", 409, "task_in_review");
+  }
+  return task;
+}
 
 export async function visibleTaskProjectIds(auth: AuthenticatedRequest) {
   const rows = await useDatabase()

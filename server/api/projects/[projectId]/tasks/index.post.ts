@@ -85,19 +85,6 @@ export default defineEventHandler(async (event) => {
         "project_archived",
       );
     }
-    const [reviewTask] = await transaction
-      .select({ id: tasks.id })
-      .from(tasks)
-      .where(and(eq(tasks.projectId, project.id), eq(tasks.status, "in_review")))
-      .limit(1);
-    if (reviewTask) {
-      return new APIError(
-        "project_in_review",
-        "This project is locked while a task is in review",
-        409,
-        "project_in_review",
-      );
-    }
 
     let selectedTags: TagView[] = [];
     if (body.tags.length) {

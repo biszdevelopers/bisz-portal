@@ -12,6 +12,7 @@ import { parseBody } from "~/server/utils/request";
 import { taskMemberCreateSchema } from "~/shared/contracts";
 import { recordActivity } from "~/server/services/activity";
 import { createNotifications } from "~/server/services/notifications";
+import { lockEditableTask } from "~/server/services/tasks";
 
 export default defineEventHandler(async (event) => {
   const auth = await authenticateRequest(event);
@@ -48,7 +49,10 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    await useDatabase().transaction(async (transaction) => {
+    const result = await useDatabase().transaction(async (transaction) => {
+      const task = await lockEditableTask(transaction, taskId);
+      if (task instanceof APIError) return task;
+
       await transaction.insert(taskMembers).values({ taskId, userId: body.userId });
       const now = new Date();
       await transaction.update(tasks).set({ updatedAt: now }).where(eq(tasks.id, taskId));
@@ -81,6 +85,7 @@ export default defineEventHandler(async (event) => {
         ]);
       }
     });
+    if (result instanceof APIError) return apiResult(event, result);
   } catch (error) {
     if (typeof error === "object" && error && "code" in error && error.code === "23505") {
       return apiResult(event, new APIError("conflict", "That user is already a task member", 409, "conflict"));

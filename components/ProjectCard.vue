@@ -133,7 +133,7 @@ function onMenu(command: string) {
           <el-icon><User /></el-icon>
           <span>No assigned users</span>
         </div>
-        <el-tag v-if="project.reviewLocked" size="small" type="warning">In review</el-tag>
+        <el-tag v-if="project.reviewTaskId" size="small" type="warning">Tasks in review</el-tag>
       </div>
     </template>
   </el-card>

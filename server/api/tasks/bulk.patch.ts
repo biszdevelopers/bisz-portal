@@ -20,6 +20,7 @@ import {
 import { projectCapabilities } from "~/server/utils/authorization";
 import { recordActivity } from "~/server/services/activity";
 import { createNotifications } from "~/server/services/notifications";
+import { lockEditableTask } from "~/server/services/tasks";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -37,8 +38,8 @@ export default defineEventHandler(async (event) => {
     .select({ task: tasks, projectName: projects.name })
     .from(tasks)
     .innerJoin(projects, eq(tasks.projectId, projects.id))
-    .where(inArray(tasks.id, body.taskIds));
-  const byId = new Map(rows.map((row) => [row.task.id, row]));
+    .where(inArray(tasks.id, body.taskIds))
+    .orderBy(tasks.id);
   const projectIds = [...new Set(rows.map((row) => row.task.projectId))];
   const memberships = projectIds.length
     ? await db
@@ -54,22 +55,6 @@ export default defineEventHandler(async (event) => {
   const membershipByProject = new Map(
     memberships.map((membership) => [membership.projectId, membership]),
   );
-  const reviewProjects = new Set(
-    (
-      projectIds.length
-        ? await db
-            .select({ projectId: tasks.projectId })
-            .from(tasks)
-            .where(
-              and(
-                inArray(tasks.projectId, projectIds),
-                eq(tasks.status, "in_review"),
-              ),
-            )
-        : []
-    ).map((row) => row.projectId),
-  );
-
   const result: TaskBulkResult = { updated: [], skipped: [] };
   const permitted = rows.filter(({ task }) => {
     const membership = membershipByProject.get(task.projectId);
@@ -80,20 +65,6 @@ export default defineEventHandler(async (event) => {
     const capabilities = projectCapabilities(auth, membership);
     if (!capabilities.updateTasks) {
       result.skipped.push({ id: task.id, reason: "Task update is not allowed" });
-      return false;
-    }
-    if (reviewProjects.has(task.projectId)) {
-      result.skipped.push({
-        id: task.id,
-        reason: "Project is locked for review",
-      });
-      return false;
-    }
-    if (body.action === "status" && task.status === "in_review") {
-      result.skipped.push({
-        id: task.id,
-        reason: "Return the task from review individually",
-      });
       return false;
     }
     return true;
@@ -136,7 +107,12 @@ export default defineEventHandler(async (event) => {
   );
 
   await db.transaction(async (transaction) => {
-    for (const { task, projectName } of targets) {
+    for (const { task: target, projectName } of targets) {
+      const task = await lockEditableTask(transaction, target.id);
+      if (task instanceof APIError) {
+        result.skipped.push({ id: target.id, reason: task.message });
+        continue;
+      }
       if (body.action === "status") {
         await transaction
           .update(tasks)
