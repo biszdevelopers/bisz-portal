@@ -21,7 +21,7 @@ const { data, pending, error, refresh } = await useFetch<{
 );
 const task = computed(() => data.value?.task);
 const actions = computed(() => data.value?.actions);
-const activeTab = useHashTab("description", ["description", "comments", "activity"]);
+const activeTab = useHashTab("description", ["description", "comments", "activity", "assignees"]);
 const changingStatus = ref(false);
 const changingMembers = ref(false);
 const selectedMembers = ref<UserSummary[]>([]);
@@ -392,6 +392,32 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
             <el-tab-pane label="Activity" name="activity">
               <ActivityFeed ref="activityFeed" :project-id="task.projectId" :task-id="task.id" />
             </el-tab-pane>
+            <el-tab-pane label="Assignees" name="assignees" class="task-assignees">
+              <UserGroupViewer
+                :users="task.members"
+                :roles="taskMemberRoles"
+                :removable="Boolean(actions?.manageMembers)"
+                :loading="changingMembers"
+                empty-text="No one assigned"
+                @remove="removeTaskMember"
+              />
+              <div v-if="actions?.manageMembers" class="task-member-add">
+                <UsersInput
+                  v-model="selectedMembers"
+                  :exclude-ids="taskMemberIds"
+                  :project-id="task.projectId"
+                  placeholder="Search project members"
+                />
+                <el-button
+                  type="primary"
+                  :loading="changingMembers"
+                  :disabled="!selectedMembers.length"
+                  @click="addTaskMembers"
+                >
+                  Assign
+                </el-button>
+              </div>
+            </el-tab-pane>
           </el-tabs>
         </div>
 
@@ -405,34 +431,6 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
               <div><dt>Created</dt><dd>{{ formatDateTime(task.createdAt) }}</dd></div>
               <div><dt>Updated</dt><dd>{{ formatDateTime(task.updatedAt) }}</dd></div>
             </dl>
-          </section>
-
-          <section class="surface task-side-card">
-            <h2>Assignees</h2>
-            <UserGroupViewer
-              :users="task.members"
-              :roles="taskMemberRoles"
-              :removable="Boolean(actions?.manageMembers)"
-              :loading="changingMembers"
-              empty-text="No one assigned"
-              @remove="removeTaskMember"
-            />
-            <div v-if="actions?.manageMembers" class="task-member-add">
-              <UsersInput
-                v-model="selectedMembers"
-                :exclude-ids="taskMemberIds"
-                :project-id="task.projectId"
-                placeholder="Search project members"
-              />
-              <el-button
-                type="primary"
-                :loading="changingMembers"
-                :disabled="!selectedMembers.length"
-                @click="addTaskMembers"
-              >
-                Assign
-              </el-button>
-            </div>
           </section>
         </aside>
       </div>
@@ -496,6 +494,7 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
 }
 
 .task-main {
+  container-type: inline-size;
   min-width: 0;
 }
 
@@ -572,9 +571,26 @@ useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }))
 
 .task-member-add {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-subtle);
+  max-width: 480px;
+  margin-top: 12px;
+}
+
+@container (width < 500px) {
+  .task-assignees :deep(.desktop-table) {
+    display: none;
+  }
+
+  .task-assignees :deep(.mobile-card-list) {
+    display: grid;
+    gap: 8px;
+  }
+
+  .task-member-add {
+    grid-template-columns: 1fr;
+  }
 }
 
 .danger-item {
