@@ -17,7 +17,12 @@ const projects = ref<Array<{ id: string; name: string }>>([]);
 const headers = import.meta.server ? useRequestHeaders(["cookie"]) : undefined;
 const { data, pending, error } = await useFetch<UserPage>("/api/users", {
   headers,
-  query: { page, pageSize, q: debouncedSearch, projectId: projectFilter },
+  query: computed(() => ({
+    page: page.value,
+    pageSize,
+    ...(debouncedSearch.value ? { q: debouncedSearch.value } : {}),
+    ...(projectFilter.value ? { projectId: projectFilter.value } : {}),
+  })),
 });
 const users = computed(() => data.value?.users ?? []);
 const total = computed(() => data.value?.pagination.total ?? 0);
