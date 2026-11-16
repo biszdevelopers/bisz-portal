@@ -139,9 +139,6 @@ onBeforeUnmount(() => {
     <p v-if="searchError" class="users-input__error" role="alert">
       {{ searchError }}
     </p>
-    <small v-else class="users-input__help">
-      Enter at least two characters to search the Basis Auth directory.
-    </small>
   </div>
 </template>
 
