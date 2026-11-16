@@ -42,14 +42,11 @@ const [
 ]);
 const project = computed(() => data.value?.project);
 const requestError = shallowRef<unknown>(null);
-const activeTab = useHashTab("overview", [
+const activeTab = useHashTab(
   "overview",
-  "tasks",
-  "incidents",
-  "files",
-  "members",
-  "settings",
-]);
+  ["overview", "discussions", "tasks", "incidents", "files", "members", "settings"],
+  (anchor) => (anchor.startsWith("comment-") ? "discussions" : undefined),
+);
 const saving = ref(false);
 const savingGithub = ref(false);
 const repairingAssetsLink = ref(false);
@@ -559,7 +556,7 @@ useHead(() => ({
           </div>
         </template>
         <template #actions>
-          <el-button v-if="canCreateTask" type="primary" :icon="Plus" @click="navigateTo(`/projects/${encodeURIComponent(projectId)}/tasks/new`)">
+          <el-button v-if="canCreateTask && activeTab !== 'tasks'" type="primary" :icon="Plus" @click="navigateTo(`/projects/${encodeURIComponent(projectId)}/tasks/new`)">
             Create task
           </el-button>
           <el-button v-if="canEditProjectSettings" :icon="Setting" @click="activeTab = 'settings'">Settings</el-button>
@@ -615,15 +612,6 @@ useHead(() => ({
               <ActivityFeed ref="activityFeed" :project-id="project.id" :limit="12" compact />
             </section>
 
-            <section class="surface project-comments">
-              <CommentThread
-                :project-id="project.id"
-                :can-write="project.capabilities.read && project.status === 'active'"
-                title="Project discussion"
-                @changed="activityFeed?.refresh()"
-              />
-            </section>
-
             <section class="surface project-repository">
               <div class="project-section-header">
                 <h2>Repository</h2>
@@ -651,14 +639,26 @@ useHead(() => ({
           </div>
         </el-tab-pane>
 
+        <el-tab-pane label="Discussions" name="discussions" lazy>
+          <div class="tab-panel">
+            <section class="surface project-comments">
+              <CommentThread
+                :project-id="project.id"
+                :can-write="project.capabilities.read && project.status === 'active'"
+                title="Project discussion"
+                @changed="activityFeed?.refresh()"
+              />
+            </section>
+          </div>
+        </el-tab-pane>
+
         <el-tab-pane label="Tasks" name="tasks">
           <div class="tab-panel">
             <div class="tab-toolbar">
               <el-input v-model="taskSearch" clearable placeholder="Search project tasks" />
-              <div class="tab-toolbar__actions">
-                <el-button @click="navigateTo(`/tasks?projectId=${encodeURIComponent(projectId)}`)">Open task board</el-button>
-                <el-button v-if="canCreateTask" @click="openTemplates">Templates</el-button>
-                <el-button v-if="canCreateTask" type="primary" :icon="Plus" @click="navigateTo(`/projects/${encodeURIComponent(projectId)}/tasks/new`)">
+              <div v-if="canCreateTask" class="tab-toolbar__actions">
+                <el-button @click="openTemplates">Templates</el-button>
+                <el-button type="primary" :icon="Plus" @click="navigateTo(`/projects/${encodeURIComponent(projectId)}/tasks/new`)">
                   Create task
                 </el-button>
               </div>
@@ -897,10 +897,6 @@ useHead(() => ({
 .project-repository,
 .project-stats {
   padding: 16px;
-}
-
-.project-comments {
-  grid-column: 1 / -1;
 }
 
 .project-description h2,
