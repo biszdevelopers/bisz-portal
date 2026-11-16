@@ -10,6 +10,11 @@
 import elementLocale from "element-plus/es/locale/lang/en";
 
 const requestEvent = useRequestEvent();
+const config = useRuntimeConfig();
+const preconnectOrigins = [
+  config.public.assetsApiUrl,
+  config.public.authIssuer,
+].filter((value): value is string => Boolean(value));
 const nonce = import.meta.server
   ? (requestEvent?.context as Record<string, unknown> | undefined)?.cspNonce
   : undefined;
@@ -26,6 +31,10 @@ const themeInitScript = `(() => {
 useHead({
   htmlAttrs: { lang: "en" },
   meta: [{ name: "color-scheme", content: "light dark" }],
+  link: [
+    ...preconnectOrigins.map((href) => ({ rel: "preconnect" as const, href })),
+    ...preconnectOrigins.map((href) => ({ rel: "dns-prefetch" as const, href })),
+  ],
   script: [
     {
       key: "theme-init",

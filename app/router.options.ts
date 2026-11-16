@@ -6,6 +6,15 @@ function scrollMainTo(top: number) {
   main.scrollTo({ top, behavior: "auto" });
 }
 
+function hashId(hash: string) {
+  if (!hash) return "";
+  try {
+    return decodeURIComponent(hash.slice(1));
+  } catch {
+    return hash.slice(1);
+  }
+}
+
 export default {
   scrollBehavior(
     to: { path: string; hash: string },
@@ -16,7 +25,7 @@ export default {
 
     const samePath = to.path === from.path;
     if (samePath) {
-      const id = to.hash ? decodeURIComponent(to.hash.slice(1)) : "";
+      const id = hashId(to.hash);
       const target = id ? document.getElementById(id) : null;
       target?.scrollIntoView({ block: "start" });
       return false;
@@ -24,7 +33,7 @@ export default {
 
     const top = savedPosition?.top ?? 0;
     requestAnimationFrame(() => {
-      const id = to.hash ? decodeURIComponent(to.hash.slice(1)) : "";
+      const id = hashId(to.hash);
       const target = id ? document.getElementById(id) : null;
       if (target) {
         target.scrollIntoView({ block: "start" });

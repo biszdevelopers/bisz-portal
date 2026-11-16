@@ -67,6 +67,7 @@ export default defineNuxtConfig({
     public: {
       assetsApiUrl:
         process.env.NUXT_PUBLIC_BISZ_ASSETS_API_URL ?? "http://localhost:5000",
+      authIssuer: process.env.BASIS_AUTH_ISSUER ?? "",
       pushEnabled: process.env.NUXT_PUBLIC_PUSH_ENABLED === "true",
     },
     session: {
@@ -79,6 +80,16 @@ export default defineNuxtConfig({
   typescript: {
     strict: true,
   },
+  vue: {
+    compilerOptions: {
+      whitespace: "condense",
+    },
+  },
+  vite: {
+    build: {
+      sourcemap: false,
+    },
+  },
   nitro: {
     errorHandler: "~/server/error.ts",
     compressPublicAssets: {
@@ -87,6 +98,9 @@ export default defineNuxtConfig({
     },
   },
   routeRules: {
+    "/_nuxt/**": {
+      headers: { "cache-control": "public, max-age=31536000, immutable" },
+    },
     "/sw.js": {
       headers: { "cache-control": "no-cache" },
     },

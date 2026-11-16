@@ -59,6 +59,7 @@ watch(
     if (props.fileType !== "markdown" || !content || fetchError) return;
 
     try {
+      const { renderMarkdown } = await import("~/utils/markdown");
       renderedHtml.value = await renderMarkdown(content);
     } catch {
       previewError.value = "The linked file could not be rendered.";

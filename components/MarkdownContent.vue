@@ -16,6 +16,7 @@ watch(
 
     pending.value = true;
     try {
+      const { renderMarkdown } = await import("~/utils/markdown");
       const rendered = await renderMarkdown(source);
       if (version === renderVersion) html.value = rendered;
     } catch {

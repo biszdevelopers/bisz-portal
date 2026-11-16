@@ -14,7 +14,7 @@ const route = useRoute();
 const router = useRouter();
 const { capabilities, pending: accessPending, error: accessError } =
   usePortalAccess();
-const incidents = ref<IncidentView[]>([]);
+const incidents = shallowRef<IncidentView[]>([]);
 const projects = ref<ProjectSummary[]>([]);
 const loading = ref(false);
 const loadError = shallowRef<unknown>(null);
@@ -144,8 +144,12 @@ function openEdit(incident: IncidentView) {
 
 function onSaved(incident: IncidentView) {
   const index = incidents.value.findIndex((item) => item.id === incident.id);
-  if (index >= 0) incidents.value[index] = incident;
-  else incidents.value = [incident, ...incidents.value];
+  incidents.value =
+    index >= 0
+      ? incidents.value.map((item, itemIndex) =>
+          itemIndex === index ? incident : item,
+        )
+      : [incident, ...incidents.value];
 }
 
 watch(q, () => {

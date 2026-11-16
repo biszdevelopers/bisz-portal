@@ -42,9 +42,8 @@ function isActive(activePath: string, path: string) {
   display: none;
   grid-template-columns: repeat(5, 1fr);
   padding-bottom: env(safe-area-inset-bottom);
-  background: color-mix(in srgb, var(--surface-card) 92%, transparent);
+  background: var(--surface-card);
   border-top: 1px solid var(--border-subtle);
-  backdrop-filter: blur(12px);
 }
 
 .bottom-nav__item {

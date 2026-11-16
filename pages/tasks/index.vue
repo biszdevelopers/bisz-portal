@@ -13,7 +13,7 @@ const router = useRouter();
 const { capabilities, data: access, pending: accessPending, error: accessError } =
   usePortalAccess();
 
-const tasks = ref<TaskView[]>([]);
+const tasks = shallowRef<TaskView[]>([]);
 const loading = ref(false);
 const loadError = shallowRef<unknown>(null);
 const nextCursor = ref<string | null>(null);
