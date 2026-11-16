@@ -4,7 +4,6 @@ import {
   CircleCloseFilled,
   Loading,
   Plus,
-  Setting,
 } from "@element-plus/icons-vue";
 import type {
   IncidentPage,
@@ -552,25 +551,10 @@ useHead(() => ({
               {{ project.status }}
             </el-tag>
             <el-tag v-if="project.reviewLocked" type="warning">In review</el-tag>
-            <span class="muted">{{ project.taskCount }} tasks · {{ project.memberCount }} members</span>
           </div>
         </template>
-        <template #actions>
-          <el-button v-if="canCreateTask && activeTab !== 'tasks'" type="primary" :icon="Plus" @click="navigateTo(`/projects/${encodeURIComponent(projectId)}/tasks/new`)">
-            Create task
-          </el-button>
-          <el-button v-if="canEditProjectSettings" :icon="Setting" @click="activeTab = 'settings'">Settings</el-button>
-          <el-dropdown v-if="canArchive">
-            <el-button text :icon="Setting" aria-label="More project actions" />
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="setArchived(project.status !== 'archived')">
-                  {{ project.status === "archived" ? "Unarchive project" : "Archive project" }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <el-button v-if="project.githubRepository" tag="a" :href="project.githubRepository" target="_blank" rel="noopener noreferrer">
+        <template v-if="project.githubRepository" #actions>
+          <el-button tag="a" :href="project.githubRepository" target="_blank" rel="noopener noreferrer">
             View on GitHub
           </el-button>
         </template>
@@ -598,13 +582,6 @@ useHead(() => ({
             <section class="surface project-description">
               <h2>About</h2>
               <MarkdownContent :source="project.description || 'No description yet.'" />
-            </section>
-
-            <section class="surface project-stats">
-              <div><span>{{ project.taskCount }}</span><small>Tasks</small></div>
-              <div><span>{{ project.completedTaskCount }}</span><small>Completed</small></div>
-              <div><span>{{ project.memberCount }}</span><small>Members</small></div>
-              <div><span>{{ project.reviewLocked ? "Yes" : "No" }}</span><small>Review lock</small></div>
             </section>
 
             <section class="surface project-activity">
@@ -908,6 +885,7 @@ useHead(() => ({
   font-weight: 650;
 }
 
+.project-description,
 .project-activity,
 .project-repository {
   grid-column: 1 / -1;
