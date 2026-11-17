@@ -152,6 +152,7 @@ BiszPortal.Tags.*
 BiszPortal.Incidents.*
 BiszPortal.Calendar.read
 BiszPortal.Users.read|update
+BiszPortal.ExportCSV.create
 BiszPortal.Applications.*
 BiszPortal.Resources.*
 BiszPortal.ApplicationOwners.manage

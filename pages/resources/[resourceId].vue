@@ -19,6 +19,13 @@ useHead(() => ({
 }));
 const activeTab = useHashTab("scopes", ["scopes", "backchannel", "secret"]);
 const scopeInput = ref("");
+const upstreamScopeInput = ref("");
+const editingScope = ref<string | null>(null);
+const editingUpstreamScope = ref("");
+const scopeRows = computed(() => resource.value?.availableScopes.map((scope) => ({
+  scope,
+  upstreamScope: resource.value?.upstreamScopes?.[scope] ?? null,
+})) ?? []);
 const logoutUri = ref(resource.value?.backchannelLogoutUri ?? "");
 const resourceSecret = ref("");
 const secretDialog = ref(false);
@@ -43,9 +50,19 @@ async function saveChange(operation: () => Promise<void>, fallback: string) {
   }
 }
 
-async function changeScope(action: "add" | "remove", scope: string) {
+function editUpstreamScope(scope: string, upstreamScope: string | null) {
+  editingScope.value = scope;
+  editingUpstreamScope.value = upstreamScope ?? "";
+}
+
+async function changeScope(action: "add" | "update" | "remove", scope: string, upstreamScope?: string) {
   if (!resource.value?.capabilities.update) return;
-  const parsed = resourceScopeChangeSchema.safeParse({ action, scope });
+  const mapping = upstreamScope?.trim();
+  const parsed = resourceScopeChangeSchema.safeParse({
+    action,
+    scope,
+    ...(action === "update" || mapping ? { upstreamScope: mapping || null } : {}),
+  });
   if (!parsed.success) {
     ElMessage.error(parsed.error.issues[0]?.message ?? "Enter a valid scope.");
     return;
@@ -57,8 +74,13 @@ async function changeScope(action: "add" | "remove", scope: string) {
       body: parsed.data,
     });
     data.value = response;
-    if (action === "add") scopeInput.value = "";
-    ElMessage.success(action === "add" ? "Scope added" : "Scope removed");
+    if (action === "add") {
+      scopeInput.value = "";
+      upstreamScopeInput.value = "";
+    }
+    if (editingScope.value === parsed.data.scope) editingScope.value = null;
+    const messages = { add: "Scope added", update: "Upstream scope saved", remove: "Scope removed" };
+    ElMessage.success(messages[action]);
   }, "The resource scopes could not be updated.");
 }
 
@@ -143,20 +165,47 @@ async function deleteResource() {
       <el-tabs v-model="activeTab">
         <el-tab-pane label="Scopes" name="scopes">
           <el-card shadow="never">
-            <el-form v-if="resource?.capabilities?.update" label-position="top" @submit.prevent="changeScope('add', scopeInput)">
+            <el-form
+              v-if="resource.capabilities.update"
+              class="scope-form"
+              label-position="top"
+              @submit.prevent="changeScope('add', scopeInput, upstreamScopeInput)"
+            >
               <el-form-item label="New scope">
-                <div class="scope-form">
-                  <el-input v-model="scopeInput" :disabled="saving" />
-                  <el-button native-type="submit" type="primary" :disabled="saving || !scopeInput.trim()">Add scope</el-button>
-                </div>
+                <el-input v-model="scopeInput" :disabled="saving" />
+              </el-form-item>
+              <el-form-item label="Entra upstream scope (optional)">
+                <el-input v-model="upstreamScopeInput" :disabled="saving" />
+              </el-form-item>
+              <el-form-item>
+                <el-button native-type="submit" type="primary" :disabled="saving || !scopeInput.trim()">Add scope</el-button>
               </el-form-item>
             </el-form>
             <div class="table-scroll">
-              <el-table :data="resource.availableScopes.map((scope) => ({ scope }))" empty-text="No scopes configured">
+              <el-table :data="scopeRows" empty-text="No scopes configured">
                 <el-table-column prop="scope" label="Scope" />
-                <el-table-column v-if="resource?.capabilities?.update" label="Actions" width="120">
+                <el-table-column label="Entra upstream scope" min-width="190">
                   <template #default="{ row }">
-                    <el-button text type="danger" :disabled="saving" @click="changeScope('remove', row.scope)">Remove</el-button>
+                    <el-input
+                      v-if="editingScope === row.scope"
+                      v-model="editingUpstreamScope"
+                      :aria-label="`Entra upstream scope for ${row.scope}`"
+                      :disabled="saving"
+                      @keyup.enter="changeScope('update', row.scope, editingUpstreamScope)"
+                    />
+                    <span v-else>{{ row.upstreamScope ?? "—" }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column v-if="resource.capabilities.update" label="Actions" width="180">
+                  <template #default="{ row }">
+                    <template v-if="editingScope === row.scope">
+                      <el-button text type="primary" :disabled="saving" @click="changeScope('update', row.scope, editingUpstreamScope)">Save</el-button>
+                      <el-button text :disabled="saving" @click="editingScope = null">Cancel</el-button>
+                    </template>
+                    <template v-else>
+                      <el-button text :disabled="saving" @click="editUpstreamScope(row.scope, row.upstreamScope)">Edit</el-button>
+                      <el-button text type="danger" :disabled="saving" @click="changeScope('remove', row.scope)">Remove</el-button>
+                    </template>
                   </template>
                 </el-table-column>
               </el-table>
@@ -233,9 +282,9 @@ async function deleteResource() {
 }
 .scope-form {
   display: flex;
-  gap: 8px;
-  max-width: 480px;
-  width: 100%;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0 12px;
 }
 .secret-value {
   margin-top: 16px;
@@ -248,6 +297,7 @@ async function deleteResource() {
   }
 
   .scope-form {
+    align-items: stretch;
     flex-direction: column;
   }
 }

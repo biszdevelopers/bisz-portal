@@ -1,6 +1,7 @@
 import {
   DelegatedPermissionSet,
   type Permission,
+  type PermissionRequirement,
 } from "@basis/schema/permissions";
 import type { H3Event } from "h3";
 import { and, eq } from "drizzle-orm";
@@ -54,6 +55,7 @@ function capabilitiesFor(set: DelegatedPermissionSet): PortalCapabilities {
     calendarRead: has(PortalPermissions.BiszPortal.Calendar.read),
     usersRead: has(PortalPermissions.BiszPortal.Users.read),
     usersUpdate: has(PortalPermissions.BiszPortal.Users.update),
+    exportCsvCreate: has(PortalPermissions.BiszPortal.ExportCSV.create),
     applicationsRead: has(Applications.read.me) || has(Applications.read.others),
     applicationsReadMe: has(Applications.read.me),
     applicationsCreate: has(Applications.create),
@@ -90,13 +92,16 @@ export function assetsCapabilities(
 
 export async function requirePortalPermission(
   event: H3Event,
-  permission: Permission | readonly Permission[],
+  permission: PermissionRequirement | readonly Permission[],
 ) {
   const auth = await authenticateRequest(event);
   if (auth instanceof APIError) return auth;
   const permissions = new DelegatedPermissionSet(auth.claims.permissions);
-  const required = typeof permission === "string" ? [permission] : permission;
-  if (!required.some((value) => permissions.has(value))) {
+  const requirement =
+    typeof permission === "string" || "allOf" in permission || "anyOf" in permission
+      ? permission
+      : { anyOf: permission };
+  if (!permissions.satisfies(requirement)) {
     return new APIError(
       "forbidden",
       "You do not have the required portal permission",

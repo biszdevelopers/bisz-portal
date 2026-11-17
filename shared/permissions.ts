@@ -24,6 +24,7 @@ export const PortalPermissions = definePermissionTree({
     Incidents: { read: true, create: true, update: true },
     Calendar: { read: true },
     Users: { read: true, update: true },
+    ExportCSV: { create: true },
     Applications: {
       read: { me: true, others: true },
       create: true,
@@ -95,6 +96,7 @@ export type PortalCapabilities = {
   calendarRead: boolean;
   usersRead: boolean;
   usersUpdate: boolean;
+  exportCsvCreate: boolean;
   applicationsRead: boolean;
   applicationsReadMe: boolean;
   applicationsCreate: boolean;
@@ -144,6 +146,7 @@ export const emptyPortalCapabilities: PortalCapabilities = {
   calendarRead: false,
   usersRead: false,
   usersUpdate: false,
+  exportCsvCreate: false,
   applicationsRead: false,
   applicationsReadMe: false,
   applicationsCreate: false,

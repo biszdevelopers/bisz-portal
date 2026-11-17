@@ -17,10 +17,12 @@ type BasisUserPage = {
 };
 
 export default defineEventHandler(async (event) => {
-  const auth = await requirePortalPermission(
-    event,
-    PortalPermissions.BiszPortal.Users.read,
-  );
+  const auth = await requirePortalPermission(event, {
+    allOf: [
+      PortalPermissions.BiszPortal.Users.read,
+      PortalPermissions.BiszPortal.ExportCSV.create,
+    ],
+  });
   if (auth instanceof APIError) {
     setResponseStatus(event, auth.status);
     return auth.toJSON();

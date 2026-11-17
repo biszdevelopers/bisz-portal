@@ -61,6 +61,49 @@ registerEndpoint(`${apiPath}/secret/rotate`, {
   },
 });
 
+test("adds a mapped scope and clears its Entra mapping in the Scopes tab", async () => {
+  const scopeChanges: unknown[] = [];
+  registerEndpoint(`${apiPath}/scopes`, {
+    method: "PATCH",
+    handler: async (event) => {
+      const body = await readBody<{ scope: string; upstreamScope: string | null }>(event);
+      scopeChanges.push(body);
+      return {
+        resource: {
+          ...resource,
+          availableScopes: [...resource.availableScopes, body.scope],
+          upstreamScopes: { [body.scope]: body.upstreamScope },
+        },
+      };
+    },
+  });
+  const wrapper = await mountSuspended(ResourceDetailPage, { route: path });
+  const form = wrapper.get("#pane-scopes form");
+  const [scope, upstreamScope] = form.findAll("input");
+  await scope!.setValue("calendar.read");
+  await upstreamScope!.setValue("Calendar.read");
+  await form.trigger("submit");
+  await vi.waitFor(() => expect(wrapper.text()).toContain("Calendar.read"));
+  expect(scopeChanges).toEqual([{ action: "add", scope: "calendar.read", upstreamScope: "Calendar.read" }]);
+
+  const row = wrapper.findAll("tr").find((entry) => entry.text().includes("calendar.read"))!;
+  await row.findAll("button").find((button) => button.text() === "Edit")!.trigger("click");
+  const edit = row.get("input");
+  expect(edit.attributes("aria-label")).toBe("Entra upstream scope for calendar.read");
+  expect(edit.element.value).toBe("Calendar.read");
+  await edit.setValue("");
+  await row.findAll("button").find((button) => button.text() === "Save")!.trigger("click");
+  await vi.waitFor(() => {
+    expect(scopeChanges).toEqual([
+      { action: "add", scope: "calendar.read", upstreamScope: "Calendar.read" },
+      { action: "update", scope: "calendar.read", upstreamScope: null },
+    ]);
+    expect(row.find("input").exists()).toBe(false);
+    expect(row.text()).not.toContain("Calendar.read");
+  });
+  wrapper.unmount();
+});
+
 test("saves or clears the webhook and rotates the resource secret", async () => {
   const wrapper = await mountSuspended(ResourceDetailPage, { route: path });
   await flushPromises();

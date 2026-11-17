@@ -1,4 +1,8 @@
-import { requirePortalPermission } from "~/server/utils/authorization";
+import { apiResult } from "~/server/utils/api-response";
+import {
+  requirePortalPermission,
+  requireProjectCapability,
+} from "~/server/utils/authorization";
 import { APIError } from "~/server/utils/basis-schema";
 import { PortalPermissions } from "~/shared/permissions";
 import { taskListQuerySchema } from "~/shared/contracts";
@@ -8,18 +12,25 @@ import { csvHeader, csvRow } from "~/server/utils/csv";
 const MAX_ROWS = 10_000;
 
 export default defineEventHandler(async (event) => {
-  const auth = await requirePortalPermission(
-    event,
-    PortalPermissions.BiszPortal.Tasks.read,
-  );
-  if (auth instanceof APIError) {
-    setResponseStatus(event, auth.status);
-    return auth.toJSON();
-  }
+  const auth = await requirePortalPermission(event, {
+    allOf: [
+      PortalPermissions.BiszPortal.Tasks.read,
+      PortalPermissions.BiszPortal.ExportCSV.create,
+    ],
+  });
+  if (auth instanceof APIError) return apiResult(event, auth);
   const parsed = taskListQuerySchema.safeParse(getQuery(event));
   if (!parsed.success) {
     setResponseStatus(event, 400);
     return { error: "invalid_request", message: "Invalid export filters" };
+  }
+  if (parsed.data.projectId) {
+    const access = await requireProjectCapability(
+      auth,
+      parsed.data.projectId,
+      "readTasks",
+    );
+    if (access instanceof APIError) return apiResult(event, access);
   }
   const projectIds = await visibleTaskProjectIds(auth);
   setResponseHeaders(event, {

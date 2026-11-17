@@ -79,7 +79,7 @@ useHead({ title: "Overview · DevConnect" });
   <section class="page overview">
     <PageHeader
       :title="greeting"
-      :description="`${today} · Your projects, tasks, and incidents in one place.`"
+      :description="`Your projects, tasks, and incidents in one place.`"
     >
       <template #actions>
         <el-tooltip

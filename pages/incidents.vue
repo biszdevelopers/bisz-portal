@@ -179,7 +179,7 @@ useHead({ title: "Incidents · DevConnect" });
   <section class="page incidents-page">
     <PageHeader title="Incidents" description="Track, assign, and resolve workspace incidents.">
       <template #actions>
-        <el-button tag="a" :href="exportUrl" :icon="Download">Export CSV</el-button>
+        <el-button v-if="capabilities.incidentsRead && capabilities.exportCsvCreate" tag="a" :href="exportUrl" :icon="Download">Export CSV</el-button>
         <el-button v-if="capabilities.incidentsCreate" type="primary" :icon="Plus" @click="openCreate">
           Report incident
         </el-button>

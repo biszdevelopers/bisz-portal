@@ -335,11 +335,19 @@ export const applicationOwnerCreateSchema = z.object({
 export const applicationOwnerUpdateSchema = z.object({
   role: applicationRoleSchema,
 });
+const oauthScope = /^[\x21\x23-\x5b\x5d-\x7e]+$/;
+const upstreamScopeSchema = z.string().trim().regex(oauthScope, "Enter one valid upstream scope").nullable();
+
 export const applicationResourceSchema = z.object({
   resourceId: z.string().trim().min(1),
   name: z.string().trim().min(1).max(120),
   availableScopes: z.array(z.string().trim().min(1)).default([]),
-});
+  upstreamScopes: z.record(z.string().min(1), upstreamScopeSchema).optional(),
+}).refine(
+  ({ availableScopes, upstreamScopes }) =>
+    Object.keys(upstreamScopes ?? {}).every((scope) => availableScopes.includes(scope)),
+  { path: ["upstreamScopes"], message: "Upstream mappings require a scope in availableScopes" },
+);
 export const applicationResourceAttachSchema = z.object({
   resourceId: z.string().trim().min(1),
 });
@@ -413,6 +421,7 @@ export type ApplicationResourceView = {
   resourceId: string;
   name: string;
   availableScopes: string[];
+  upstreamScopes?: Record<string, string | null>;
   grantedScopes: string[];
   claimCount: number;
   canUpdate: boolean;
@@ -425,14 +434,17 @@ export type AvailableApplicationResource = Omit<
 export type ResourceSummary = { resourceId: string; name: string };
 export type ResourceDetail = ResourceSummary & {
   availableScopes: string[];
+  upstreamScopes?: Record<string, string | null>;
   backchannelLogoutUri: string | null;
   capabilities: { update: boolean; delete: boolean };
 };
 export const resourceScopeChangeSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("add"),
-    scope: z.string().trim().regex(/^[\x21\x23-\x5b\x5d-\x7e]+$/, "Enter one valid OAuth scope"),
+    scope: z.string().trim().regex(oauthScope, "Enter one valid OAuth scope"),
+    upstreamScope: upstreamScopeSchema.optional(),
   }),
+  z.object({ action: z.literal("update"), scope: z.string().min(1), upstreamScope: upstreamScopeSchema }),
   z.object({ action: z.literal("remove"), scope: z.string().min(1) }),
 ]);
 export const resourceLogoutUriSchema = z.object({

@@ -265,7 +265,7 @@ useHead({ title: "Tasks · DevConnect" });
       description="Review work across the projects you can access."
     >
       <template #actions>
-        <el-button tag="a" :href="exportUrl" :icon="Download">Export CSV</el-button>
+        <el-button v-if="capabilities.tasksRead && capabilities.exportCsvCreate" tag="a" :href="exportUrl" :icon="Download">Export CSV</el-button>
       </template>
     </PageHeader>
 

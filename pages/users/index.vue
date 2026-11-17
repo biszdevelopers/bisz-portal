@@ -85,7 +85,7 @@ useHead({ title: "Users · DevConnect" });
   <section class="page users-page">
     <PageHeader title="Users" description="Browse users registered with Basis Auth.">
       <template #actions>
-        <el-button v-if="capabilities.usersRead" tag="a" :href="exportUrl" :icon="Download">
+        <el-button v-if="capabilities.usersRead && capabilities.exportCsvCreate" tag="a" :href="exportUrl" :icon="Download">
           Export CSV
         </el-button>
       </template>
