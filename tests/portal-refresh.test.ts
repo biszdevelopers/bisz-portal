@@ -139,7 +139,7 @@ describe.skipIf(!hasDatabase)("portal token renewal", () => {
       expect(row.rows[0]?.access_token).not.toBe(firstToken);
       expect(row.rows[0]?.refresh_token).not.toContain("refresh-1");
 
-      const event = {} as Parameters<typeof portalAccessToken>[0];
+      const event = { context: {} } as Parameters<typeof portalAccessToken>[0];
       const [left, right] = await Promise.all([portalAccessToken(event), portalAccessToken(event)]);
       expect(typeof left).toBe("string");
       expect(left).toBe(right);
@@ -153,7 +153,8 @@ describe.skipIf(!hasDatabase)("portal token renewal", () => {
         id: legacySessionId, user: { id: userId },
         secure: { basisAccessToken: legacyAccess, basisRefreshToken: "legacy-refresh" },
       };
-      expect(await portalAccessToken(event)).toBe(legacyAccess);
+      const legacyEvent = { context: {} } as Parameters<typeof portalAccessToken>[0];
+      expect(await portalAccessToken(legacyEvent)).toBe(legacyAccess);
       expect(activeSession.secure).toEqual({ basisSessionId: legacySessionId });
       expect(refreshes).toBe(1);
 
@@ -179,11 +180,11 @@ describe.skipIf(!hasDatabase)("portal token renewal", () => {
       };
       expect((await revoke(now, now + 1)).status).toBe(400);
       expect((await revoke(now + 60)).status).toBe(204);
-      expect(await portalAccessToken(event)).toBe(legacyAccess);
+      expect(await portalAccessToken(legacyEvent)).toBe(legacyAccess);
       expect((await revoke(now)).status).toBe(204);
       expect((await revoke(now + 60)).status).toBe(204);
       await expect(validatePortalAccessToken(legacyAccess, userId)).rejects.toThrow("revoked");
-      expect(await portalAccessToken(event)).toMatchObject({ status: 401, message: "Invalid access token" });
+      expect(await portalAccessToken(legacyEvent)).toMatchObject({ status: 401, message: "Invalid access token" });
       expect(refreshes).toBe(1);
       const cached = await databasePool().query<{ retain_until: Date }>(
         "SELECT retain_until FROM portal_revoked_access_tokens WHERE jti = $1", [jti],
@@ -201,7 +202,7 @@ describe.skipIf(!hasDatabase)("portal token renewal", () => {
         id: legacySessionId, user: { id: userId },
         secure: { basisAccessToken: legacyAccess, basisRefreshToken: "legacy-refresh" },
       };
-      expect(await portalAccessToken(event)).toMatchObject({ status: 401, message: "Invalid access token" });
+      expect(await portalAccessToken(legacyEvent)).toMatchObject({ status: 401, message: "Invalid access token" });
     } finally {
       if (revokedJti) await databasePool().query("DELETE FROM portal_revoked_access_tokens WHERE jti = $1", [revokedJti]);
       await databasePool().query("DELETE FROM portal_user_logouts WHERE user_id = $1", [userId]);
