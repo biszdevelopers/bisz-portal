@@ -7,6 +7,8 @@ import { requireSameOrigin } from "~/server/utils/basis-applications";
 import { APIError, APIResponse } from "~/server/utils/basis-schema";
 import { useDatabase } from "~/server/database/client";
 import { projects, taskMembers, tasks } from "~/server/database/schema";
+import { recordActivity } from "~/server/services/activity";
+import { lockEditableTask } from "~/server/services/tasks";
 
 export default defineEventHandler(async (event) => {
   const auth = await authenticateRequest(event);
@@ -24,6 +26,9 @@ export default defineEventHandler(async (event) => {
   const access = await requireProjectCapability(auth, task.projectId, "updateTasks");
   if (access instanceof APIError) return apiResult(event, access);
   const deleted = await useDatabase().transaction(async (transaction) => {
+    const task = await lockEditableTask(transaction, taskId);
+    if (task instanceof APIError) return task;
+
     const rows = await transaction
       .delete(taskMembers)
       .where(and(eq(taskMembers.taskId, taskId), eq(taskMembers.userId, userId)))
@@ -32,9 +37,17 @@ export default defineEventHandler(async (event) => {
       const now = new Date();
       await transaction.update(tasks).set({ updatedAt: now }).where(eq(tasks.id, taskId));
       await transaction.update(projects).set({ updatedAt: now }).where(eq(projects.id, task.projectId));
+      await recordActivity(transaction, {
+        projectId: task.projectId,
+        actorId: auth.user.id,
+        type: "task_members_removed",
+        taskId,
+        metadata: { userId, title: task.title },
+      });
     }
     return rows;
   });
+  if (deleted instanceof APIError) return apiResult(event, deleted);
   if (!deleted.length) {
     return apiResult(event, new APIError("not_found", "Task member not found", 404, "not_found"));
   }

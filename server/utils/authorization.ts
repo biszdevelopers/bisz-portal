@@ -1,10 +1,15 @@
 import {
   DelegatedPermissionSet,
   type Permission,
+  type PermissionRequirement,
 } from "@basis/schema/permissions";
 import type { H3Event } from "h3";
 import { and, eq } from "drizzle-orm";
-import { projectMembers, projects, tasks } from "~/server/database/schema";
+import {
+  projectMembers,
+  projects,
+  taskMembers,
+} from "~/server/database/schema";
 import { useDatabase } from "~/server/database/client";
 import {
   authenticateRequest,
@@ -24,7 +29,10 @@ import {
 export function portalCapabilities(
   grants: readonly string[],
 ): PortalCapabilities {
-  const set = new DelegatedPermissionSet(grants);
+  return capabilitiesFor(new DelegatedPermissionSet(grants));
+}
+
+function capabilitiesFor(set: DelegatedPermissionSet): PortalCapabilities {
   const has = (permission: Permission) => set.has(permission);
   const { Applications, Resources } = PortalPermissions.BiszPortal;
   return {
@@ -47,6 +55,7 @@ export function portalCapabilities(
     calendarRead: has(PortalPermissions.BiszPortal.Calendar.read),
     usersRead: has(PortalPermissions.BiszPortal.Users.read),
     usersUpdate: has(PortalPermissions.BiszPortal.Users.update),
+    exportCsvCreate: has(PortalPermissions.BiszPortal.ExportCSV.create),
     applicationsRead: has(Applications.read.me) || has(Applications.read.others),
     applicationsReadMe: has(Applications.read.me),
     applicationsCreate: has(Applications.create),
@@ -83,13 +92,16 @@ export function assetsCapabilities(
 
 export async function requirePortalPermission(
   event: H3Event,
-  permission: Permission | readonly Permission[],
+  permission: PermissionRequirement | readonly Permission[],
 ) {
   const auth = await authenticateRequest(event);
   if (auth instanceof APIError) return auth;
   const permissions = new DelegatedPermissionSet(auth.claims.permissions);
-  const required = typeof permission === "string" ? [permission] : permission;
-  if (!required.some((value) => permissions.has(value))) {
+  const requirement =
+    typeof permission === "string" || "allOf" in permission || "anyOf" in permission
+      ? permission
+      : { anyOf: permission };
+  if (!permissions.satisfies(requirement)) {
     return new APIError(
       "forbidden",
       "You do not have the required portal permission",
@@ -104,13 +116,18 @@ export function projectCapabilities(
   auth: AuthenticatedRequest,
   membership: { role: "owner" | "member"; permissions: ProjectPermission[] },
 ): ProjectCapabilities {
-  const global = portalCapabilities(auth.claims.permissions);
+  const grants = new DelegatedPermissionSet(auth.claims.permissions);
+  const global = capabilitiesFor(grants);
   const local = (permission: ProjectPermission) =>
     membership.role === "owner" || membership.permissions.includes(permission);
+  const read = global.projectsRead && local(ProjectPermissions.projectRead);
+  const commentScope = membership.role === "owner" ? "me" : "others";
   return {
-    read: global.projectsRead && local(ProjectPermissions.projectRead),
+    read,
     update: global.projectsUpdate && local(ProjectPermissions.projectUpdate),
     archive: global.projectsArchive && local(ProjectPermissions.projectArchive),
+    comment:
+      read && grants.has(PortalPermissions.BiszPortal.Projects.comment[commentScope]),
     manageMembers:
       global.projectMembersManage && local(ProjectPermissions.membersManage),
     readTasks: global.tasksRead && local(ProjectPermissions.tasksRead),
@@ -125,6 +142,32 @@ export function projectCapabilities(
       global.incidentsUpdate &&
       local(ProjectPermissions.incidentsWrite),
   };
+}
+
+export async function canCommentOnTask(
+  auth: AuthenticatedRequest,
+  capabilities: ProjectCapabilities,
+  projectStatus: "active" | "archived",
+  task: { id: string; creatorId: string },
+) {
+  if (projectStatus !== "active" || !capabilities.read || !capabilities.readTasks)
+    return false;
+
+  const grants = new DelegatedPermissionSet(auth.claims.permissions);
+  const { me, others } = PortalPermissions.BiszPortal.Tasks.comment;
+  const canCommentOnOwn = grants.has(me);
+  const canCommentOnOthers = grants.has(others);
+  if (canCommentOnOwn === canCommentOnOthers) return canCommentOnOwn;
+  if (task.creatorId === auth.user.id) return canCommentOnOwn;
+
+  const [assignment] = await useDatabase()
+    .select({ userId: taskMembers.userId })
+    .from(taskMembers)
+    .where(
+      and(eq(taskMembers.taskId, task.id), eq(taskMembers.userId, auth.user.id)),
+    )
+    .limit(1);
+  return assignment ? canCommentOnOwn : canCommentOnOthers;
 }
 
 export async function findMembership(projectId: string, userId: string) {
@@ -145,7 +188,6 @@ export async function requireProjectCapability(
   auth: AuthenticatedRequest,
   projectId: string,
   capability: keyof ProjectCapabilities,
-  options: { allowReviewLocked?: boolean } = {},
 ) {
   const membership = await findMembership(projectId, auth.user.id);
   if (!membership)
@@ -169,10 +211,7 @@ export async function requireProjectCapability(
     "updateTasks",
     "writeIncidents",
   ];
-  if (
-    !options.allowReviewLocked &&
-    mutationCapabilities.includes(capability)
-  ) {
+  if (mutationCapabilities.includes(capability)) {
     const [project] = await useDatabase()
       .select({ status: projects.status })
       .from(projects)
@@ -187,19 +226,6 @@ export async function requireProjectCapability(
         "Archived projects cannot be changed",
         409,
         "project_archived",
-      );
-    }
-    const [reviewTask] = await useDatabase()
-      .select({ id: tasks.id })
-      .from(tasks)
-      .where(and(eq(tasks.projectId, projectId), eq(tasks.status, "in_review")))
-      .limit(1);
-    if (reviewTask) {
-      return new APIError(
-        "project_in_review",
-        "This project is locked while a task is in review",
-        409,
-        "project_in_review",
       );
     }
   }

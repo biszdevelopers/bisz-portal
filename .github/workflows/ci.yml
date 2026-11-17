@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bisz_portal
+          POSTGRES_PASSWORD: bisz_portal
+          POSTGRES_DB: bisz_portal
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bisz_portal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://bisz_portal:bisz_portal@localhost:5432/bisz_portal
+      NUXT_APP_SECRET: ci-only-app-secret-that-is-at-least-32-characters
+      NUXT_SESSION_PASSWORD: ci-only-app-secret-that-is-at-least-32-characters
+      BASIS_PORTAL_ORIGIN: http://localhost:4005
+      BASIS_AUTH_ISSUER: http://localhost:3000
+      BASIS_AUTH_CLIENT_ID: ci-client
+      BASIS_AUTH_CLIENT_SECRET: ci-secret
+      BASIS_AUTH_RESOURCE: devconnect://noesis
+      BASIS_AUTH_INTERNAL_URL: http://localhost:3001
+      BASIS_AUTH_RESOURCE_SECRET: ci-resource-secret
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run db:migrate
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run test:component
+      - run: bun run build
+      - run: bun run check:bundle
+      - run: bun audit || true

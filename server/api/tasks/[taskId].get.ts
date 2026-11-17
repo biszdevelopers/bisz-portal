@@ -1,7 +1,8 @@
-import { and, eq, ne } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { apiResult } from "~/server/utils/api-response";
 import {
+  canCommentOnTask,
   requirePortalPermission,
   requireProjectCapability,
 } from "~/server/utils/authorization";
@@ -57,32 +58,27 @@ export default defineEventHandler(async (event) => {
   const canSubmit =
     row.task.creatorId === auth.user.id ||
     taskMembers.some((member) => member.userId === auth.user.id);
-  const [otherReview] = await useDatabase()
-    .select({ id: tasks.id })
-    .from(tasks)
-    .where(
-      and(
-        eq(tasks.projectId, row.task.projectId),
-        eq(tasks.status, "in_review"),
-        ne(tasks.id, row.task.id),
-      ),
-    )
-    .limit(1);
+  const canEdit =
+    row.projectStatus === "active" &&
+    row.task.status !== "in_review" &&
+    access.capabilities.updateTasks;
   const actions: TaskActions = {
     submitForReview:
       row.task.status === "todo" &&
       canSubmit &&
-      row.projectStatus === "active" &&
-      !otherReview,
+      row.projectStatus === "active",
     review:
       row.task.status === "in_review" &&
       row.projectStatus === "active" &&
       access.capabilities.updateTasks,
     manageMembers:
-      row.task.status === "todo" &&
+      row.task.status === "todo" && canEdit,
+    edit: canEdit,
+    delete: canEdit,
+    duplicate:
       row.projectStatus === "active" &&
-      access.capabilities.updateTasks &&
-      !otherReview,
+      access.capabilities.createTasks,
+    comment: await canCommentOnTask(auth, access.capabilities, row.projectStatus, row.task),
   };
   return apiResult(
     event,

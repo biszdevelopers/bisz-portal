@@ -29,6 +29,16 @@ export function taskStatusLabel(value: string) {
   return value.replaceAll("_", " ");
 }
 
+export function taskDateHeading(value: string) {
+  if (value === "undated") return "No due date";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return "Invalid due date";
+  const [, year, month, day] = match;
+  return new Intl.DateTimeFormat(portalLocale, {
+    dateStyle: "full",
+  }).format(new Date(Number(year), Number(month) - 1, Number(day)));
+}
+
 export function markdownExcerpt(value: string, maximum = 240) {
   const plainText = value
     .replace(/```[\s\S]*?```/g, " ")

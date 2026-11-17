@@ -14,6 +14,7 @@ import {
   BASIS_PORTAL_AUTHORIZATION_SCOPES,
   basisAuthIssuer,
   basisPortalAudience,
+  basisPortalOrigin,
 } from "~/server/utils/basis-auth";
 import { basisCallbackUrl, basisOidcConfiguration } from "~/server/utils/basis-oidc";
 import { deletePortalTokens, savePortalTokens } from "~/server/utils/portal-auth-tokens";
@@ -23,7 +24,7 @@ const transactionCookieOptions = {
   maxAge: 10 * 60,
   path: "/",
   sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
+  secure: new URL(basisPortalOrigin()).protocol === "https:",
 };
 
 const transactionCookieNames = {
@@ -110,6 +111,7 @@ export default defineEventHandler(async (event) => {
         expectedState: state,
         pkceCodeVerifier: verifier,
       },
+      { redirect_uri: basisCallbackUrl() },
     );
     const profile = tokens.claims();
 

@@ -17,7 +17,9 @@ import { projectCreateSchema } from "~/shared/contracts";
 import { parseBody } from "~/server/utils/request";
 import { useDatabase } from "~/server/database/client";
 import { projectMembers, projects } from "~/server/database/schema";
-import { getProjectDetail, slugify } from "~/server/services/projects";
+import { getProjectSummary, slugify } from "~/server/services/projects";
+import { recordActivity } from "~/server/services/activity";
+import { createNotifications } from "~/server/services/notifications";
 import {
   AssetsProjectRequestError,
   cleanupAssetsProject,
@@ -160,9 +162,30 @@ export default defineEventHandler(async (event) => {
         role: "owner",
         permissions: [...projectPermissionValues],
       });
-      if (memberIds.length) {
+      await recordActivity(transaction, {
+        projectId: created.id,
+        actorId: auth.user.id,
+        type: "project_created",
+        metadata: { title: created.name },
+      });
+      const additionalMembers = memberIds.filter(
+        (userId) => userId !== auth.user.id,
+      );
+      if (additionalMembers.length) {
+        await createNotifications(
+          transaction,
+          additionalMembers.map((userId) => ({
+            userId,
+            type: "membership_added" as const,
+            title: `Added to project: ${created.name}`,
+            url: `/projects/${created.id}`,
+            projectId: created.id,
+            actorId: auth.user.id,
+            dedupeKey: `membership_added:${created.id}:${userId}`,
+          })),
+        );
         await transaction.insert(projectMembers).values(
-          memberIds.map((userId) => ({
+          additionalMembers.map((userId) => ({
             projectId: created.id,
             userId,
             role: "member" as const,
@@ -200,7 +223,7 @@ export default defineEventHandler(async (event) => {
   return apiResult(
     event,
     new APIResponse(
-      { project: await getProjectDetail(auth, project.id) },
+      { project: await getProjectSummary(auth, project.id) },
       201,
     ),
   );

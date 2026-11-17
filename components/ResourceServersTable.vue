@@ -16,6 +16,7 @@ function resourcePath(resourceId: string) {
   <BackendErrorDetails v-if="error" :error="error" />
   <el-card v-else shadow="never" v-loading="pending">
     <el-table
+      class="desktop-table"
       :data="data?.resources ?? []"
       empty-text="No resource servers are available to you"
       @row-click="(row: ResourceSummary) => navigateTo(resourcePath(row.resourceId))"
@@ -31,6 +32,23 @@ function resourcePath(resourceId: string) {
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="mobile-card-list">
+      <NuxtLink
+        v-for="resource in data?.resources ?? []"
+        :key="resource.resourceId"
+        :to="resourcePath(resource.resourceId)"
+        class="resource-card surface"
+      >
+        <strong>{{ resource.name }}</strong>
+        <pre class="resource-id">{{ resource.resourceId }}</pre>
+      </NuxtLink>
+      <el-empty
+        v-if="!pending && !(data?.resources ?? []).length"
+        :image-size="72"
+        description="No resource servers are available to you"
+      />
+    </div>
   </el-card>
 </template>
 
@@ -38,8 +56,22 @@ function resourcePath(resourceId: string) {
 .resource-id {
   margin: 0;
   font: 12px/1.5 var(--el-font-family);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 :deep(.el-table__row) {
   cursor: pointer;
+}
+
+.resource-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.resource-card strong {
+  font-size: 14px;
 }
 </style>

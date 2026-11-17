@@ -1,14 +1,14 @@
 import type { H3Event } from "h3";
 import type { AuthenticatedRequest } from "~/server/utils/api-auth";
 import { APIError } from "~/server/utils/basis-schema";
-import { basisPortalOrigin } from "~/server/utils/basis-auth";
+import { portalRequestOrigin } from "~/server/utils/portal-origin";
 import { basisInternalFetch } from "~/server/utils/basis-internal";
 
 export function requireSameOrigin(event: H3Event) {
   const origin = getHeader(event, "origin");
   const fetchSite = getHeader(event, "sec-fetch-site");
   if (
-    (origin && origin !== basisPortalOrigin()) ||
+    (origin && origin !== portalRequestOrigin()) ||
     fetchSite === "cross-site"
   ) {
     return new APIError(

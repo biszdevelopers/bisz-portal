@@ -6,5 +6,10 @@ export function basisInternalFetch(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers);
   headers.set("authorization", `Bearer ${secret}`);
   headers.set("x-basis-resource", encodeURIComponent(basisPortalAudience()));
-  return fetch(`${baseUrl}/internal${path}`, { ...options, headers, redirect: "error" });
+  return fetch(`${baseUrl}/internal${path}`, {
+    ...options,
+    headers,
+    redirect: "error",
+    signal: options.signal ?? AbortSignal.timeout(10_000),
+  });
 }

@@ -1,3 +1,5 @@
+import { portalOrigin } from "~/server/utils/portal-origin";
+
 export const BASIS_PORTAL_SCOPE = "noesis.access";
 export const BASIS_PORTAL_AUTHORIZATION_SCOPES = [
   "openid",
@@ -22,8 +24,5 @@ export function basisPortalAudience() {
 }
 
 export function basisPortalOrigin() {
-  return (process.env.BASIS_PORTAL_ORIGIN ?? "http://localhost:4005").replace(
-    /\/$/,
-    "",
-  );
+  return portalOrigin();
 }

@@ -4,7 +4,12 @@ import {
   APIError,
   type AccessTokenClaims,
 } from "~/server/utils/basis-schema";
-import { invalidPortalAccessToken, portalAccessToken, validatePortalAccessToken } from "~/server/utils/portal-auth-tokens";
+import {
+  decodePortalAccessClaims,
+  invalidPortalAccessToken,
+  portalAccessToken,
+  portalSession,
+} from "~/server/utils/portal-auth-tokens";
 
 export type AuthenticatedRequest = {
   accessToken: string;
@@ -19,16 +24,23 @@ export type AuthenticatedRequest = {
 export async function authenticateRequest(
   event: H3Event,
 ): Promise<AuthenticatedRequest | APIError> {
+  const cached = event.context.portalAuthenticated as
+    | AuthenticatedRequest
+    | undefined;
+  if (cached) return cached;
+
   try {
     const accessToken = await portalAccessToken(event);
     if (accessToken instanceof APIError) return accessToken;
-    const session = await getUserSession(event);
+    const session = await portalSession(event);
     const userId = session.user?.id;
     if (typeof userId !== "string")
       return invalidPortalAccessToken();
-    const claims = await validatePortalAccessToken(accessToken, userId);
+    // portalAccessToken already loaded the sealed token and checked revocation.
+    // Decoding avoids a second JWKS verification and revocation query per request.
+    const claims = decodePortalAccessClaims(accessToken, userId);
 
-    return {
+    const result: AuthenticatedRequest = {
       accessToken,
       claims,
       user: {
@@ -38,6 +50,8 @@ export async function authenticateRequest(
           typeof session.user?.image === "string" ? session.user.image : null,
       },
     };
+    event.context.portalAuthenticated = result;
+    return result;
   } catch {
     return invalidPortalAccessToken();
   }

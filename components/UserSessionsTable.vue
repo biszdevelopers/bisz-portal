@@ -34,7 +34,14 @@ async function forceEnd(session: UserAuthorizationSession) {
 
 <template>
   <BackendErrorDetails v-if="error" :error="error" />
-  <el-table v-else v-loading="pending" :data="data?.sessions ?? []" row-key="id" empty-text="No active sessions">
+  <el-table
+    v-else
+    class="desktop-table"
+    v-loading="pending"
+    :data="data?.sessions ?? []"
+    row-key="id"
+    empty-text="No active sessions"
+  >
     <el-table-column label="Resource server" min-width="200">
       <template #default="{ row }">
         {{ row.resource }}
@@ -60,4 +67,58 @@ async function forceEnd(session: UserAuthorizationSession) {
       </template>
     </el-table-column>
   </el-table>
+  <div v-if="!error" class="mobile-card-list">
+    <article
+      v-for="session in data?.sessions ?? []"
+      :key="session.id"
+      class="session-card surface"
+    >
+      <div class="session-card__main">
+        <strong>
+          {{ session.resource }}
+          <el-tag v-if="session.current" size="small" effect="plain">Current</el-tag>
+        </strong>
+        <small>
+          Created {{ dateTime.format(new Date(session.createdAt)) }} · Expires
+          {{ dateTime.format(new Date(session.expiresAt)) }}
+        </small>
+      </div>
+      <el-button
+        v-if="canEnd"
+        text
+        type="danger"
+        :disabled="ending"
+        @click="forceEnd(session)"
+      >
+        End
+      </el-button>
+    </article>
+    <el-empty
+      v-if="!pending && !(data?.sessions ?? []).length"
+      :image-size="72"
+      description="No active sessions"
+    />
+  </div>
 </template>
+
+<style scoped>
+.session-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+}
+
+.session-card__main {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.session-card__main small {
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+</style>

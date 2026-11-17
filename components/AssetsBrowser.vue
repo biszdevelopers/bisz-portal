@@ -236,6 +236,117 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }
 
+const previewOpen = ref(false);
+const previewTitle = ref("");
+const previewKind = ref<"image" | "pdf" | "text" | "audio" | "video" | null>(null);
+const previewUrl = ref("");
+const previewText = ref("");
+const previewLoading = ref(false);
+const previewError = ref("");
+const versionsOpen = ref(false);
+const versionsAsset = ref<AssetItem | null>(null);
+const versions = ref<AssetVersion[]>([]);
+const versionsLoading = ref(false);
+
+function revokePreview() {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = "";
+}
+
+async function fetchAssetBlob(asset: AssetItem, version: AssetVersion) {
+  let token = connection.value.connected ? await acquireToken() : null;
+  const assetPath = `/${encodeURIComponent(asset.id)}/${encodeURIComponent(version.version)}`;
+  const download = (bearer: string | null) =>
+    fetch(`${assetBase.value}${assetPath}`, {
+      credentials: "omit",
+      redirect: "error",
+      cache: bearer ? "no-store" : "default",
+      headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
+    });
+  let response = await download(token);
+  if (response.status === 401 && token) {
+    if (connection.value.userId) clearAssetsBrowserToken(connection.value.userId);
+    token = await acquireToken(true);
+    response = await download(token);
+  }
+  if (!response.ok) throw new Error(`Preview failed (${response.status})`);
+  return await response.blob();
+}
+
+async function previewAsset(asset: AssetItem, version: AssetVersion) {
+  revokePreview();
+  previewTitle.value = version.originalFileName || asset.originalFileName || asset.id;
+  previewKind.value = null;
+  previewText.value = "";
+  previewError.value = "";
+  previewOpen.value = true;
+  const mime = (version.mimeType || "").toLowerCase();
+  if (mime === "image/svg+xml") {
+    previewError.value = "SVG files are downloaded instead of previewed.";
+    return;
+  }
+  if (version.sizeBytes > 25 * 1024 * 1024) {
+    previewError.value = "This file is too large to preview. Download it instead.";
+    return;
+  }
+  previewLoading.value = true;
+  try {
+    const blob = await fetchAssetBlob(asset, version);
+    if (mime.startsWith("image/")) {
+      previewKind.value = "image";
+      previewUrl.value = URL.createObjectURL(blob);
+    } else if (mime === "application/pdf") {
+      previewKind.value = "pdf";
+      previewUrl.value = URL.createObjectURL(blob);
+    } else if (mime.startsWith("text/") || mime === "application/json") {
+      if (blob.size > 2 * 1024 * 1024) {
+        previewError.value = "This text file is too large to preview.";
+        return;
+      }
+      previewKind.value = "text";
+      previewText.value = await blob.text();
+    } else if (mime.startsWith("audio/")) {
+      previewKind.value = "audio";
+      previewUrl.value = URL.createObjectURL(blob);
+    } else if (mime.startsWith("video/")) {
+      previewKind.value = "video";
+      previewUrl.value = URL.createObjectURL(blob);
+    } else {
+      previewError.value = "This file type cannot be previewed. Download it instead.";
+    }
+  } catch (caught) {
+    previewError.value = backendErrorMessage(caught, "The file could not be previewed.");
+  } finally {
+    previewLoading.value = false;
+  }
+}
+
+function closePreview() {
+  revokePreview();
+  previewKind.value = null;
+  previewText.value = "";
+  previewError.value = "";
+}
+
+async function openVersions(asset: AssetItem) {
+  versionsAsset.value = asset;
+  versionsOpen.value = true;
+  versionsLoading.value = true;
+  versions.value = [];
+  try {
+    const result = await assetsFetch<AssetVersionList>(
+      `/assets/${encodeURIComponent(asset.id)}/versions`,
+    );
+    versions.value = result.items;
+  } catch (caught) {
+    reportError(caught, "The asset versions could not be loaded.");
+  } finally {
+    versionsLoading.value = false;
+  }
+}
+
+onBeforeUnmount(revokePreview);
+
 function openRename(asset: AssetItem) {
   if (props.readonly) return;
   if (!requireConnection()) return;
@@ -414,6 +525,7 @@ async function uploadAssets() {
 
     <el-card v-else shadow="never" v-loading="assetsPending">
       <el-table
+        class="desktop-table"
         :data="assetRows"
         row-key="rowKey"
         lazy
@@ -506,6 +618,12 @@ async function uploadAssets() {
               <el-button text :icon="MoreFilled" aria-label="Object actions" />
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item @click="previewAsset(row as AssetObjectRow, row as AssetObjectRow)">
+                    Preview latest
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="openVersions(row as AssetObjectRow)">
+                    Version history
+                  </el-dropdown-item>
                   <el-dropdown-item @click="openUpload(row as AssetObjectRow)">
                     <template #icon><Upload /></template>
                     Upload new version
@@ -535,6 +653,11 @@ async function uploadAssets() {
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item
+                    @click="previewAsset((row as AssetVersionRow).asset, row as AssetVersionRow)"
+                  >
+                    Preview
+                  </el-dropdown-item>
+                  <el-dropdown-item
                     @click="downloadAsset((row as AssetVersionRow).asset, row as AssetVersionRow)"
                   >
                     <template #icon><Download /></template>
@@ -546,6 +669,38 @@ async function uploadAssets() {
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="assets-mobile mobile-card-list">
+        <article v-for="asset in assetRows" :key="asset.id" class="asset-card surface">
+          <div class="asset-card__main">
+            <strong>{{ asset.originalFileName || asset.id }}</strong>
+            <small>{{ formatSize(asset.sizeBytes) }} · {{ projectNames.get(asset.projectUid) || "Assets" }}</small>
+          </div>
+          <div class="asset-card__actions">
+            <el-button text size="small" @click="previewAsset(asset, asset)">Preview</el-button>
+            <el-dropdown
+              v-if="!readonly"
+              trigger="click"
+              placement="bottom-end"
+              popper-class="asset-actions-menu"
+            >
+              <el-button text :icon="MoreFilled" aria-label="Object actions" />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="openVersions(asset)">Version history</el-dropdown-item>
+                  <el-dropdown-item @click="openUpload(asset)">Upload new version</el-dropdown-item>
+                  <el-dropdown-item @click="openRename(asset)">Rename</el-dropdown-item>
+                  <el-dropdown-item divided class="asset-action-danger" @click="deleteAsset(asset)">
+                    Delete
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </article>
+        <el-empty v-if="!assetRows.length && !assetsPending" :image-size="72" :description="emptyText" />
+      </div>
+
       <div class="assets-browser__pagination">
         <el-pagination
           v-model:current-page="page"
@@ -665,6 +820,63 @@ async function uploadAssets() {
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="previewOpen"
+      :title="previewTitle || 'Preview'"
+      width="min(880px, 94vw)"
+      @closed="closePreview"
+    >
+      <div v-loading="previewLoading" class="asset-preview">
+        <p v-if="previewError" class="asset-preview__error">{{ previewError }}</p>
+        <img v-else-if="previewKind === 'image'" :src="previewUrl" :alt="previewTitle" />
+        <iframe
+          v-else-if="previewKind === 'pdf'"
+          :src="previewUrl"
+          class="asset-preview__frame"
+          title="PDF preview"
+          sandbox=""
+        />
+        <pre v-else-if="previewKind === 'text'" class="asset-preview__text">{{ previewText }}</pre>
+        <audio v-else-if="previewKind === 'audio'" :src="previewUrl" controls />
+        <video v-else-if="previewKind === 'video'" :src="previewUrl" controls />
+      </div>
+      <template #footer>
+        <el-button @click="previewOpen = false">Close</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="versionsOpen"
+      :title="versionsAsset ? `Versions of ${versionsAsset.originalFileName || versionsAsset.id}` : 'Versions'"
+      width="min(680px, 94vw)"
+    >
+      <div v-loading="versionsLoading" class="version-list">
+        <div v-for="version in versions" :key="version.version" class="version-row surface">
+          <span>
+            <strong>Version {{ version.version }}</strong>
+            <small>{{ formatSize(version.sizeBytes) }} · {{ version.mimeType }}</small>
+          </span>
+          <div>
+            <el-button
+              v-if="versionsAsset"
+              text
+              size="small"
+              @click="previewAsset(versionsAsset, version)"
+              >Preview</el-button
+            >
+            <el-button
+              v-if="versionsAsset"
+              text
+              size="small"
+              @click="downloadAsset(versionsAsset, version)"
+              >Download</el-button
+            >
+          </div>
+        </div>
+        <el-empty v-if="!versions.length && !versionsLoading" :image-size="72" description="No versions found." />
+      </div>
+    </el-dialog>
   </section>
 </template>
 
@@ -722,6 +934,97 @@ async function uploadAssets() {
   color: var(--el-color-danger);
   background-color: var(--el-color-danger-light-9);
 }
+.asset-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.asset-card__main {
+  display: grid;
+  min-width: 0;
+}
+
+.asset-card__main strong,
+.asset-card__main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-card__main small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.asset-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.asset-preview {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+}
+
+.asset-preview img,
+.asset-preview video {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius-sm);
+}
+
+.asset-preview__frame {
+  width: 100%;
+  height: 70vh;
+  border: 0;
+}
+
+.asset-preview__text {
+  width: 100%;
+  max-height: 70vh;
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+  font: 12px/1.6 var(--font-mono);
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.asset-preview__error {
+  color: var(--status-danger);
+  font-size: 13px;
+}
+
+.version-list {
+  display: grid;
+  gap: 6px;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+}
+
+.version-row span {
+  display: grid;
+}
+
+.version-row small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 @media (max-width: 640px) {
   .assets-browser__toolbar {
     align-items: stretch;

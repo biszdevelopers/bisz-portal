@@ -6,13 +6,25 @@ import {
 
 export const PortalPermissions = definePermissionTree({
   BiszPortal: {
-    Projects: { read: true, create: true, update: true, archive: true },
+    Projects: {
+      read: true,
+      create: true,
+      update: true,
+      archive: true,
+      comment: { me: true, others: true },
+    },
     ProjectMembers: { manage: true },
-    Tasks: { read: true, create: true, update: true },
+    Tasks: {
+      read: true,
+      create: true,
+      update: true,
+      comment: { me: true, others: true },
+    },
     Tags: { read: true, create: true, delete: true },
     Incidents: { read: true, create: true, update: true },
     Calendar: { read: true },
     Users: { read: true, update: true },
+    ExportCSV: { create: true },
     Applications: {
       read: { me: true, others: true },
       create: true,
@@ -84,6 +96,7 @@ export type PortalCapabilities = {
   calendarRead: boolean;
   usersRead: boolean;
   usersUpdate: boolean;
+  exportCsvCreate: boolean;
   applicationsRead: boolean;
   applicationsReadMe: boolean;
   applicationsCreate: boolean;
@@ -106,6 +119,7 @@ export type ProjectCapabilities = {
   read: boolean;
   update: boolean;
   archive: boolean;
+  comment: boolean;
   manageMembers: boolean;
   readTasks: boolean;
   createTasks: boolean;
@@ -132,6 +146,7 @@ export const emptyPortalCapabilities: PortalCapabilities = {
   calendarRead: false,
   usersRead: false,
   usersUpdate: false,
+  exportCsvCreate: false,
   applicationsRead: false,
   applicationsReadMe: false,
   applicationsCreate: false,

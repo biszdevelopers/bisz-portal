@@ -10,9 +10,11 @@ import { parseBody } from "~/server/utils/request";
 import { findBasisUser } from "~/server/utils/basis-users";
 import { useDatabase } from "~/server/database/client";
 import { projectMembers, projects } from "~/server/database/schema";
-import { getProjectDetail } from "~/server/services/projects";
+import { getProjectSummary } from "~/server/services/projects";
 import { eq } from "drizzle-orm";
 import { requireSameOrigin } from "~/server/utils/basis-applications";
+import { recordActivity } from "~/server/services/activity";
+import { createNotifications } from "~/server/services/notifications";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -55,6 +57,30 @@ export default defineEventHandler(async (event) => {
         .update(projects)
         .set({ updatedAt: new Date() })
         .where(eq(projects.id, projectId));
+      const [project] = await transaction
+        .select({ name: projects.name })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      await recordActivity(transaction, {
+        projectId,
+        actorId: auth.user.id,
+        type: "member_added",
+        metadata: { userId: body.userId },
+      });
+      if (body.userId !== auth.user.id) {
+        await createNotifications(transaction, [
+          {
+            userId: body.userId,
+            type: "membership_added",
+            title: `Added to project: ${project?.name ?? "project"}`,
+            url: `/projects/${projectId}`,
+            projectId,
+            actorId: auth.user.id,
+            dedupeKey: `membership_added:${projectId}:${body.userId}`,
+          },
+        ]);
+      }
     });
   } catch (error) {
     if (
@@ -77,6 +103,6 @@ export default defineEventHandler(async (event) => {
   }
   return apiResult(
     event,
-    new APIResponse({ project: await getProjectDetail(auth, projectId) }, 201),
+    new APIResponse({ project: await getProjectSummary(auth, projectId) }, 201),
   );
 });

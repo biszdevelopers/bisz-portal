@@ -10,7 +10,8 @@ import { projectUpdateSchema } from "~/shared/contracts";
 import { parseBody } from "~/server/utils/request";
 import { useDatabase } from "~/server/database/client";
 import { projects } from "~/server/database/schema";
-import { getProjectDetail } from "~/server/services/projects";
+import { getProjectSummary } from "~/server/services/projects";
+import { recordActivity } from "~/server/services/activity";
 
 export default defineEventHandler(async (event) => {
   const auth = await requirePortalPermission(
@@ -28,9 +29,15 @@ export default defineEventHandler(async (event) => {
       .update(projects)
       .set({ ...body, updatedAt: new Date() })
       .where(eq(projects.id, projectId));
+    await recordActivity(useDatabase(), {
+      projectId,
+      actorId: auth.user.id,
+      type: "project_updated",
+      metadata: { title: body.name },
+    });
     return apiResult(
       event,
-      new APIResponse({ project: await getProjectDetail(auth, projectId) }),
+      new APIResponse({ project: await getProjectSummary(auth, projectId) }),
     );
   } catch (error) {
     if (

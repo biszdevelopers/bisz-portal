@@ -41,6 +41,17 @@ const githubHeaders = {
   "X-GitHub-Api-Version": "2026-03-10",
 };
 
+const REPOSITORY_CACHE_TTL_MS = 5 * 60_000;
+const REPOSITORY_CACHE_MAX = 50;
+const repositoryCache = new Map<
+  string,
+  { value: Omit<RepositoryValidationResult, "status" | "code">; expiresAt: number }
+>();
+
+export function clearGitHubRepositoryCache() {
+  repositoryCache.clear();
+}
+
 export function parseGitHubRepositoryUrl(
   value: string,
 ): ParsedGitHubRepositoryUrl | null {
@@ -149,6 +160,10 @@ export async function fetchGitHubRepository(
     );
   }
 
+  const cacheKey = `${parsed.owner.toLowerCase()}/${parsed.repository.toLowerCase()}`;
+  const cached = repositoryCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
   const apiUrl = `https://api.github.com/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repository)}`;
   const authorization = await githubRepositoryAuthorization(
     parsed.owner,
@@ -187,7 +202,7 @@ export async function fetchGitHubRepository(
     );
   }
 
-  return {
+  const result = {
     repository: {
       name: repository.name,
       fullName: repository.full_name,
@@ -214,4 +229,13 @@ export async function fetchGitHubRepository(
       editUrl: readme.html_url.replace("/blob/", "/edit/"),
     },
   };
+  if (repositoryCache.size >= REPOSITORY_CACHE_MAX) {
+    const oldest = repositoryCache.keys().next().value;
+    if (oldest) repositoryCache.delete(oldest);
+  }
+  repositoryCache.set(cacheKey, {
+    value: result,
+    expiresAt: Date.now() + REPOSITORY_CACHE_TTL_MS,
+  });
+  return result;
 }

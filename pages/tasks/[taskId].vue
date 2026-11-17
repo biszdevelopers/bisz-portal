@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from "element-plus";
+import { CopyDocument, Delete, EditPen } from "@element-plus/icons-vue";
 import type {
   TaskActions,
   TaskMemberView,
@@ -7,11 +7,12 @@ import type {
   TaskView,
   UserSummary,
 } from "~/shared/contracts";
+import { formatDate, formatDateTime } from "~/utils/format";
 
 const route = useRoute();
 const taskId = computed(() => String(route.params.taskId ?? ""));
 const headers = import.meta.server ? useRequestHeaders(["cookie"]) : undefined;
-const { data, pending, error } = await useFetch<{
+const { data, pending, error, refresh } = await useFetch<{
   task: TaskView;
   actions: TaskActions;
 }>(
@@ -19,13 +20,63 @@ const { data, pending, error } = await useFetch<{
   { headers },
 );
 const task = computed(() => data.value?.task);
-const activeTab = useHashTab("description", ["description", "members"]);
+const actions = computed(() => data.value?.actions);
+const activeTab = useHashTab("description", ["description", "comments", "activity", "assignees"]);
 const changingStatus = ref(false);
 const changingMembers = ref(false);
 const selectedMembers = ref<UserSummary[]>([]);
 const requestError = shallowRef<unknown>(null);
+const activityFeed = ref<{ refresh: () => void }>();
+const editing = ref(false);
+const saving = ref(false);
+const duplicating = ref(false);
+const deleting = ref(false);
+const templateDialog = ref(false);
+const templateName = ref("");
+const savingTemplate = ref(false);
 const taskMemberRoles = [{ label: "Assignee", value: "assignee" }];
-const taskMemberIds = computed(() => task.value?.members.map((member) => member.userId) ?? []);
+const taskMemberIds = computed(
+  () => task.value?.members.map((member) => member.userId) ?? [],
+);
+const form = reactive({
+  title: "",
+  description: "",
+  dueDate: null as string | null,
+  tags: [] as string[],
+});
+const editDirty = computed(
+  () =>
+    Boolean(task.value) &&
+    (form.title !== task.value?.title ||
+      form.description !== task.value?.description ||
+      form.dueDate !== (task.value?.dueDate ?? null) ||
+      form.tags.join("\u0000") !==
+        (task.value?.tags.map((tag) => tag.name).join("\u0000") ?? "")),
+);
+
+onBeforeRouteLeave(async () => {
+  if (!editing.value || !editDirty.value) return true;
+  return await ElMessageBox.confirm(
+    "You have unsaved task changes. Leave without saving?",
+    "Unsaved changes",
+    { type: "warning", confirmButtonText: "Leave" },
+  ).then(
+    () => true,
+    () => false,
+  );
+});
+
+watch(
+  task,
+  (value) => {
+    if (!value) return;
+    form.title = value.title;
+    form.description = value.description;
+    form.dueDate = value.dueDate;
+    form.tags = value.tags.map((tag) => tag.name);
+  },
+  { immediate: true },
+);
 
 async function changeStatus(status: TaskStatus) {
   if (!task.value || changingStatus.value) return;
@@ -33,34 +84,38 @@ async function changeStatus(status: TaskStatus) {
     status === "in_review"
       ? {
           title: "Submit task for review?",
-          message: "Project editing will be locked until a reviewer returns or completes this task.",
+          message:
+            "Task editing will be locked until a reviewer returns or completes this task.",
           confirm: "Submit for review",
         }
       : status === "todo"
         ? {
             title: "Return task to do?",
-            message: "Project editing will be unlocked so work can continue.",
+            message: "The task will be editable again.",
             confirm: "Return to do",
           }
         : {
             title: "Complete task?",
-            message: "The task will be completed and project editing will be unlocked.",
+            message: "The task will be marked complete and become editable again.",
             confirm: "Complete",
           };
   const confirmed = await ElMessageBox.confirm(copy.message, copy.title, {
     confirmButtonText: copy.confirm,
     type: status === "done" ? "success" : "warning",
-  }).then(() => true, () => false);
+  }).then(
+    () => true,
+    () => false,
+  );
   if (!confirmed) return;
-
   changingStatus.value = true;
   try {
-    const endpoint: string = `/api/tasks/${encodeURIComponent(task.value.id)}/status`;
     data.value = await $fetch<{ task: TaskView; actions: TaskActions }>(
-      endpoint,
+      `/api/tasks/${encodeURIComponent(task.value.id)}/status`,
       { method: "PATCH", body: { status } },
     );
+    if (status === "in_review") editing.value = false;
     requestError.value = null;
+    activityFeed.value?.refresh();
     ElMessage.success(`Task is now ${taskStatusLabel(status)}`);
   } catch (caught) {
     requestError.value = caught;
@@ -70,8 +125,115 @@ async function changeStatus(status: TaskStatus) {
   }
 }
 
+async function saveTask() {
+  if (!task.value || saving.value) return;
+  saving.value = true;
+  try {
+    const response = await $fetch<{ task: TaskView }>(
+      `/api/tasks/${encodeURIComponent(task.value.id)}`,
+      { method: "PATCH", body: { ...form } },
+    );
+    if (data.value) data.value.task = response.task;
+    editing.value = false;
+    requestError.value = null;
+    ElMessage.success("Task updated");
+    await refresh();
+  } catch (caught) {
+    requestError.value = caught;
+    ElMessage.error(backendErrorMessage(caught, "The task could not be updated."));
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function duplicateTask() {
+  if (!task.value || duplicating.value) return;
+  duplicating.value = true;
+  try {
+    const response = await $fetch<{ task: TaskView }>(
+      `/api/tasks/${encodeURIComponent(task.value.id)}/duplicate`,
+      { method: "POST", body: {} },
+    );
+    ElMessage.success("Task duplicated");
+    await navigateTo(`/tasks/${encodeURIComponent(response.task.id)}`);
+  } catch (caught) {
+    ElMessage.error(backendErrorMessage(caught, "The task could not be duplicated."));
+  } finally {
+    duplicating.value = false;
+  }
+}
+
+function openTemplateDialog() {
+  if (!task.value) return;
+  templateName.value = task.value.title.slice(0, 80);
+  templateDialog.value = true;
+}
+
+async function saveTemplate() {
+  if (!task.value || !templateName.value.trim() || savingTemplate.value) return;
+  savingTemplate.value = true;
+  try {
+    const dueOffsetDays = task.value.dueDate
+      ? Math.max(
+          0,
+          Math.ceil(
+            (new Date(`${task.value.dueDate}T00:00:00`).getTime() -
+              new Date().setHours(0, 0, 0, 0)) /
+              86_400_000,
+          ),
+        )
+      : null;
+    await $fetch(
+      `/api/projects/${encodeURIComponent(task.value.projectId)}/task-templates`,
+      {
+        method: "POST",
+        body: {
+          name: templateName.value.trim(),
+          title: task.value.title,
+          description: task.value.description,
+          dueOffsetDays,
+          tags: task.value.tags.map((tag) => tag.name),
+          memberIds: task.value.members.map((member) => member.userId),
+        },
+      },
+    );
+    templateDialog.value = false;
+    ElMessage.success("Task template saved");
+  } catch (caught) {
+    ElMessage.error(backendErrorMessage(caught, "The template could not be saved."));
+  } finally {
+    savingTemplate.value = false;
+  }
+}
+
+async function deleteTask() {
+  if (!task.value || deleting.value) return;
+  const confirmed = await ElMessageBox.confirm(
+    "Delete this task and its comments? This cannot be undone.",
+    "Delete task",
+    { type: "error", confirmButtonText: "Delete" },
+  ).then(
+    () => true,
+    () => false,
+  );
+  if (!confirmed) return;
+  deleting.value = true;
+  try {
+    await $fetch(`/api/tasks/${encodeURIComponent(task.value.id)}`, {
+      method: "DELETE",
+    });
+    ElMessage.success("Task deleted");
+    await navigateTo(`/projects/${encodeURIComponent(task.value.projectId)}#tasks`);
+  } catch (caught) {
+    ElMessage.error(backendErrorMessage(caught, "The task could not be deleted."));
+  } finally {
+    deleting.value = false;
+  }
+}
+
 async function addTaskMembers() {
-  if (!task.value || !data.value?.actions.manageMembers || !selectedMembers.value.length) return;
+  if (!task.value || !actions.value?.manageMembers || !selectedMembers.value.length)
+    return;
   changingMembers.value = true;
   try {
     for (const user of selectedMembers.value) {
@@ -93,12 +255,15 @@ async function addTaskMembers() {
 }
 
 async function removeTaskMember(member: { userId: string; displayName: string }) {
-  if (!task.value || !data.value?.actions.manageMembers) return;
+  if (!task.value || !actions.value?.manageMembers) return;
   const confirmed = await ElMessageBox.confirm(
     `Remove ${member.displayName} from this task?`,
     "Remove task member",
     { type: "warning", confirmButtonText: "Remove" },
-  ).then(() => true, () => false);
+  ).then(
+    () => true,
+    () => false,
+  );
   if (!confirmed) return;
   changingMembers.value = true;
   try {
@@ -106,7 +271,9 @@ async function removeTaskMember(member: { userId: string; displayName: string })
       `/api/tasks/${encodeURIComponent(task.value.id)}/members/${encodeURIComponent(member.userId)}`,
       { method: "DELETE" },
     );
-    task.value.members = task.value.members.filter((candidate) => candidate.userId !== member.userId);
+    task.value.members = task.value.members.filter(
+      (candidate) => candidate.userId !== member.userId,
+    );
     requestError.value = null;
     ElMessage.success("Task member removed");
   } catch (caught) {
@@ -116,47 +283,42 @@ async function removeTaskMember(member: { userId: string; displayName: string })
     changingMembers.value = false;
   }
 }
+
+useHead(() => ({ title: task.value ? `${task.value.title} · Tasks` : "Task" }));
 </script>
 
 <template>
-  <section v-loading="pending">
+  <section v-loading="pending" class="page task-detail">
     <BackendErrorDetails v-if="error || requestError" :error="requestError || error" />
 
     <template v-if="task">
-      <header class="page-header task-header">
-        <div>
-          <el-link :underline="false" href="/tasks">Tasks</el-link>
-          <h1>{{ task.title }}</h1>
-          <el-tag
-            :type="task.status === 'done' ? 'success' : task.status === 'in_review' ? 'warning' : 'info'"
-          >
-            {{ taskStatusLabel(task.status) }}
-          </el-tag>
-          <div v-if="task.tags.length" class="task-tags" aria-label="Task tags">
+      <PageHeader :title="task.title" :back-to="`/projects/${encodeURIComponent(task.projectId)}#tasks`" back-label="Project tasks">
+        <template #meta>
+          <div class="task-meta">
             <el-tag
-              v-for="tag in task.tags"
-              :key="tag.name"
-              effect="plain"
-              size="small"
+              :type="task.status === 'done' ? 'success' : task.status === 'in_review' ? 'warning' : 'info'"
             >
-              <span
-                class="task-tag__color"
-                :style="{ backgroundColor: tagColorValue(tag.color) }"
-              />
+              {{ taskStatusLabel(task.status) }}
+            </el-tag>
+            <NuxtLink :to="`/projects/${encodeURIComponent(task.projectId)}`">{{ task.projectName }}</NuxtLink>
+          </div>
+          <div v-if="task.tags.length" class="task-tags" aria-label="Task tags">
+            <el-tag v-for="tag in task.tags" :key="tag.name" effect="plain" size="small">
+              <span class="task-tag__color" :style="{ backgroundColor: tagColorValue(tag.color) }" />
               {{ tag.name }}
             </el-tag>
           </div>
-        </div>
-        <div class="task-actions">
+        </template>
+        <template #actions>
           <el-button
-            v-if="data?.actions.submitForReview"
+            v-if="actions?.submitForReview"
             type="primary"
             :loading="changingStatus"
             @click="changeStatus('in_review')"
           >
             Submit for review
           </el-button>
-          <template v-if="data?.actions.review">
+          <template v-if="actions?.review">
             <el-button :disabled="changingStatus" @click="changeStatus('todo')">
               Return to do
             </el-button>
@@ -164,81 +326,160 @@ async function removeTaskMember(member: { userId: string; displayName: string })
               Complete
             </el-button>
           </template>
-          <el-button tag="a" :href="`/projects/${encodeURIComponent(task.projectId)}`">
-            View project
+          <el-button v-if="actions?.edit" :icon="EditPen" @click="editing = !editing">
+            {{ editing ? "Close editor" : "Edit" }}
           </el-button>
-        </div>
-      </header>
+          <el-button v-if="actions?.duplicate" :icon="CopyDocument" :loading="duplicating" @click="duplicateTask">
+            Duplicate
+          </el-button>
+          <el-button v-if="actions?.duplicate" text @click="openTemplateDialog">
+            Save as template
+          </el-button>
+          <el-dropdown v-if="actions?.delete">
+            <el-button text :icon="Delete" aria-label="More task actions" />
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item class="danger-item" @click="deleteTask">Delete task</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </template>
+      </PageHeader>
 
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="Description" name="description">
-          <div class="description-panel">
-            <MarkdownContent :source="task.description" />
-          </div>
-        </el-tab-pane>
-        <el-tab-pane label="Members" name="members">
-          <div class="task-members">
-            <div v-if="data?.actions.manageMembers" class="task-members__add">
-              <UsersInput
-                v-model="selectedMembers"
-                :exclude-ids="taskMemberIds"
+      <div class="task-layout">
+        <div class="task-main">
+          <el-card v-if="editing && actions?.edit" shadow="never" class="task-editor">
+            <el-form label-position="top" @submit.prevent="saveTask">
+              <el-form-item label="Title">
+                <el-input v-model="form.title" maxlength="120" show-word-limit />
+              </el-form-item>
+              <el-form-item label="Tags">
+                <SharedInputTag v-model="form.tags" :max="20" placeholder="Search for a tag" />
+              </el-form-item>
+              <el-form-item label="Description">
+                <MarkdownEditor v-model="form.description" :maxlength="50_000" />
+              </el-form-item>
+              <el-form-item label="Due date">
+                <el-date-picker
+                  v-model="form.dueDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  placeholder="No due date"
+                  clearable
+                />
+              </el-form-item>
+              <div class="task-editor__actions">
+                <el-button @click="editing = false">Cancel</el-button>
+                <el-button type="primary" :loading="saving" @click="saveTask">Save task</el-button>
+              </div>
+            </el-form>
+          </el-card>
+
+          <el-tabs v-model="activeTab">
+            <el-tab-pane label="Description" name="description">
+              <div class="description-panel">
+                <MarkdownContent :source="task.description" />
+              </div>
+            </el-tab-pane>
+            <el-tab-pane label="Comments" name="comments">
+              <CommentThread
                 :project-id="task.projectId"
-                placeholder="Search project members to assign"
+                :task-id="task.id"
+                :can-write="Boolean(actions?.comment)"
+                @changed="refresh(); activityFeed?.refresh()"
               />
-              <el-button
-                type="primary"
+            </el-tab-pane>
+            <el-tab-pane label="Activity" name="activity">
+              <ActivityFeed ref="activityFeed" :project-id="task.projectId" :task-id="task.id" />
+            </el-tab-pane>
+            <el-tab-pane label="Assignees" name="assignees" class="task-assignees">
+              <UserGroupViewer
+                :users="task.members"
+                :roles="taskMemberRoles"
+                :removable="Boolean(actions?.manageMembers)"
                 :loading="changingMembers"
-                :disabled="!selectedMembers.length"
-                @click="addTaskMembers"
-              >
-                Add members
-              </el-button>
-            </div>
-            <UserGroupViewer
-              :users="task.members"
-              :roles="taskMemberRoles"
-              :removable="data?.actions.manageMembers"
-              :loading="changingMembers"
-              empty-text="No task members"
-              @remove="removeTaskMember"
-            />
-          </div>
-        </el-tab-pane>
-      </el-tabs>
+                empty-text="No one assigned"
+                @remove="removeTaskMember"
+              />
+              <div v-if="actions?.manageMembers" class="task-member-add">
+                <UsersInput
+                  v-model="selectedMembers"
+                  :exclude-ids="taskMemberIds"
+                  :project-id="task.projectId"
+                  placeholder="Search project members"
+                />
+                <el-button
+                  type="primary"
+                  :loading="changingMembers"
+                  :disabled="!selectedMembers.length"
+                  @click="addTaskMembers"
+                >
+                  Assign
+                </el-button>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+
+        <aside class="task-sidebar">
+          <section class="surface task-side-card">
+            <h2>Details</h2>
+            <dl>
+              <div><dt>Created</dt><dd>{{ formatDateTime(task.createdAt) }}</dd></div>
+              <div><dt>Updated</dt><dd>{{ formatDateTime(task.updatedAt) }}</dd></div>
+              <div><dt>Due</dt><dd>{{ task.dueDate ? formatDate(task.dueDate) : "No due date" }}</dd></div>
+            </dl>
+          </section>
+        </aside>
+      </div>
     </template>
+
+    <el-dialog v-model="templateDialog" title="Save task as template" width="min(440px, 94vw)">
+      <el-form label-position="top" @submit.prevent="saveTemplate">
+        <el-form-item label="Template name">
+          <el-input v-model="templateName" maxlength="80" show-word-limit autofocus />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="templateDialog = false">Cancel</el-button>
+        <el-button type="primary" :loading="savingTemplate" :disabled="!templateName.trim()" @click="saveTemplate">
+          Save template
+        </el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <style scoped>
-.task-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
+.task-detail {
+  display: grid;
+  gap: 16px;
 }
 
-.task-header h1 {
-  margin-top: 8px;
+.task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.task-meta a {
+  color: var(--accent);
 }
 
 .task-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 8px 0;
-}
-
-.task-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+  margin-top: 8px;
 }
 
 .task-tags :deep(.el-tag__content) {
   display: inline-flex;
-  gap: 6px;
   align-items: center;
+  gap: 6px;
 }
 
 .task-tag__color {
@@ -247,32 +488,122 @@ async function removeTaskMember(member: { userId: string; displayName: string })
   border-radius: 50%;
 }
 
+.task-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
+  gap: 20px;
+}
+
+.task-main {
+  container-type: inline-size;
+  min-width: 0;
+}
+
 .description-panel {
   min-height: 180px;
   padding-top: 8px;
 }
 
-.task-members {
-  padding-top: 8px;
+.task-editor {
+  margin-bottom: 16px;
 }
 
-.task-members__add {
+.task-editor :deep(.el-date-editor) {
+  width: 100%;
+}
+
+.task-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.task-sidebar {
+  display: grid;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  max-height: calc(100dvh - 64px - 40px);
+  overflow-y: auto;
+}
+
+.task-side-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.task-side-card h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.task-side-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.task-side-card dl div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-side-card dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.task-side-card dd {
+  margin: 0;
+  font-size: 12px;
+  text-align: right;
+}
+
+.task-member-add {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 12px;
-  margin-bottom: 18px;
+  gap: 8px;
+  max-width: 480px;
+  margin-top: 12px;
 }
 
-@media (max-width: 700px) {
-  .task-header {
-    align-items: stretch;
-    flex-direction: column;
+@container (width < 500px) {
+  .task-assignees :deep(.desktop-table) {
+    display: none;
   }
 
-  .task-members__add {
+  .task-assignees :deep(.mobile-card-list) {
+    display: grid;
+    gap: 8px;
+  }
+
+  .task-member-add {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.danger-item {
+  color: var(--status-danger);
+}
+
+@media (max-width: 1023px) {
+  .task-layout {
     grid-template-columns: 1fr;
   }
 
+  .task-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    order: -1;
+  }
 }
 </style>

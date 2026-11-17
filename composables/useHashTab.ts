@@ -1,12 +1,20 @@
-export function useHashTab(defaultTab: string, validTabs: readonly string[]) {
+export function useHashTab(
+  defaultTab: string,
+  validTabs: readonly string[],
+  resolveAnchorTab?: (anchor: string) => string | undefined,
+) {
   const route = useRoute();
   const router = useRouter();
   const activeTab = ref(defaultTab);
   const isValidTab = (value: string) => validTabs.includes(value);
+  const tabForHash = (hash: string) => {
+    const anchor = hash.slice(1);
+    return isValidTab(anchor) ? anchor : resolveAnchorTab?.(anchor);
+  };
 
   onMounted(() => {
-    const tab = route.hash.slice(1);
-    if (isValidTab(tab)) {
+    const tab = tabForHash(route.hash);
+    if (tab) {
       activeTab.value = tab;
       return;
     }
@@ -15,15 +23,14 @@ export function useHashTab(defaultTab: string, validTabs: readonly string[]) {
 
   watch(activeTab, (tab) => {
     if (!isValidTab(tab)) return;
-    const hash = `#${tab}`;
-    if (route.hash !== hash) void router.replace({ hash });
+    if (tabForHash(route.hash) !== tab) void router.replace({ hash: `#${tab}` });
   });
 
   watch(
     () => route.hash,
     (hash) => {
-      const tab = hash.slice(1);
-      if (isValidTab(tab) && tab !== activeTab.value) activeTab.value = tab;
+      const tab = tabForHash(hash);
+      if (tab && tab !== activeTab.value) activeTab.value = tab;
     },
   );
 
